@@ -208,8 +208,6 @@ export class KeyboardListener {
         }
         document.addEventListener("keydown", this.events.keydown);
         document.addEventListener("keyup", this.events.keyup);
-        // document.addEventListener("keydown", this.onKeyDown.bind(this));
-        // document.addEventListener("keyup", this.onKeyUp.bind(this));
     }
 
     dispose() {

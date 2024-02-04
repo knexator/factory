@@ -11,18 +11,14 @@ const input = new Input();
 const canvas = document.querySelector("canvas")!;
 const ctx = canvas.getContext("2d")!;
 
-const DEBUG = true;
-
 const CONFIG = {
   factory_size: 20,
   label_spacing: 40,
 };
 
-if (DEBUG) {
-  const gui = new GUI();
-  gui.add(CONFIG, "factory_size", 10, 50);
-  gui.add(CONFIG, "label_spacing", 10, 50);
-}
+const gui = new GUI();
+gui.add(CONFIG, "factory_size", 10, 50);
+gui.add(CONFIG, "label_spacing", 10, 50);
 
 // current design:
 // no throughput, no delays, 
@@ -149,13 +145,17 @@ function every_frame(cur_timestamp: number) {
   ctx.font = "20px Arial";
   ctx.textBaseline = "middle"
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'gray';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'black';
   if (twgl.resizeCanvasToDisplaySize(canvas)) {
     // resizing stuff
   }
   ctx.translate(camera.center.x + canvas.width / 2, camera.center.y + canvas.height / 2);
 
   // logic
-  const cur_mouse_pos = new Vec2(input.mouse.clientX, input.mouse.clientY).sub(camera.center).sub(new Vec2(canvas.width / 2, canvas.height / 2));
+  const rect = canvas.getBoundingClientRect();
+  const cur_mouse_pos = new Vec2(input.mouse.clientX - rect.left, input.mouse.clientY - rect.top).sub(camera.center).sub(new Vec2(canvas.width / 2, canvas.height / 2));
   const delta_mouse = new Vec2(input.mouse.clientX - input.mouse.prev_clientX, input.mouse.clientY - input.mouse.prev_clientY);
 
   const factory_under_mouse = factories.find(f => f.pos.sub(cur_mouse_pos).magSq() < CONFIG.factory_size * CONFIG.factory_size);
@@ -326,6 +326,7 @@ if (import.meta.hot) {
     input.mouse.dispose();
     input.keyboard.dispose();
     cancelAnimationFrame(animation_id);
+    gui.destroy();
     data.factories = factories;
     data.edges = edges;
     data.recipes = recipes;

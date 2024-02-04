@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FIXME: game title</title>
+    <title>Factory</title>
     <style>
         body {
             width: 100%;
@@ -13,13 +13,27 @@
             position: absolute;
             margin: 0;
             overscroll-behavior: contain;
+            background-color: #333;
+
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
-        #game_canvas {
-            display: block;
-            width: 100vw;
-            height: 100vh;
+        #canvas_container {
+            position: relative;
+            width: 80vw;
+            height: 45vw;
         }
+
+        canvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+        }
+
 
         #loading_screen {
             /* FIXME: customize loading screen */
@@ -46,8 +60,11 @@
 </head>
 
 <body>
-    <!-- <div id="loading_screen">Loading...</div> -->
-    <canvas id="game_canvas"></canvas>
+    <div id="canvas_container">
+        <!-- <div id="loading_screen">Loading...</div> -->
+        <canvas id="gl_canvas"></canvas>
+        <canvas id="ctx_canvas"></canvas>
+    </div>
 </body>
 
 </html>
