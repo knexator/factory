@@ -57,7 +57,7 @@ class Factory {
   ) { }
 }
 
-const items = {
+let items = {
   score: new ItemKind(10),
   water: new ItemKind(.1),
   potato: new ItemKind(1),
@@ -65,7 +65,7 @@ const items = {
   dried_potato: new ItemKind(.1),
 };
 
-const recipes = {
+let recipes = {
   extract_water: new Recipe([], [[1, items.water]], 1),
   grow_potato: new Recipe([], [[1, items.potato]], 1),
   dry_potato: new Recipe([[1, items.potato]], [[1, items.dried_potato]], 1),
@@ -77,7 +77,6 @@ const recipes = {
 
 let factories: Factory[] = [
   new Factory(new Vec2(300, 0), recipes.score, true),
-  new Factory(new Vec2(300, 100), recipes.extract_water, true),
   new Factory(new Vec2(-500, -100), recipes.extract_water, true),
   new Factory(new Vec2(-500, 100), recipes.grow_potato, true),
 ];
@@ -102,7 +101,7 @@ function costOfOutput(factory: Factory): number {
   // const valid_in = input_factories.filter(({ source }) => source.recipe.outputs.some(([_amnt, out]) => out === item));
   factory.recipe.inputs.forEach(([required_amount, required_item]) => {
     let min_cost = Infinity;
-    input_factories.forEach(({source, cost}) => {
+    input_factories.forEach(({ source, cost }) => {
       source.recipe.outputs.forEach(([produced_amount, produced_item]) => {
         if (produced_item !== required_item) return;
         const production_cost = cost * required_amount / produced_amount;
@@ -276,7 +275,7 @@ function every_frame(cur_timestamp: number) {
     }
   });
 
-  requestAnimationFrame(every_frame);
+  animation_id = requestAnimationFrame(every_frame);
 }
 
 ////// library stuff
@@ -313,14 +312,36 @@ function fillText(text: string, pos: Vec2) {
   ctx.fillText(text, pos.x, pos.y);
 }
 
+if (import.meta.hot) {
+  if (import.meta.hot.data.edges) {
+    factories = import.meta.hot.data.factories;
+    edges = import.meta.hot.data.edges;
+    recipes = import.meta.hot.data.recipes;
+    items = import.meta.hot.data.items;
+  }
+
+  import.meta.hot.accept();
+
+  import.meta.hot.dispose((data) => {
+    input.mouse.dispose();
+    input.keyboard.dispose();
+    cancelAnimationFrame(animation_id);
+    data.factories = factories;
+    data.edges = edges;
+    data.recipes = recipes;
+    data.items = items;
+  })
+}
+
+let animation_id: number;
 const loading_screen_element = document.querySelector<HTMLDivElement>("#loading_screen")!;
 if (loading_screen_element) {
   loading_screen_element.innerText = "Press to start!";
   document.addEventListener("pointerdown", _event => {
     loading_screen_element.style.opacity = "0";
-    requestAnimationFrame(every_frame);
+    animation_id = requestAnimationFrame(every_frame);
   }, { once: true });
 } else {
-  requestAnimationFrame(every_frame);
+  animation_id = requestAnimationFrame(every_frame);
 }
 

@@ -9,148 +9,148 @@ export const enum KeyCode {
     Escape = "Escape",
     Digit1 = "Digit1",
     Digit2 = "Digit2",
-    Digit3 = "Digit3", 
-    Digit4 = "Digit4", 
-    Digit5 = "Digit5", 
-    Digit6 = "Digit6", 
-    Digit7 = "Digit7", 
-    Digit8 = "Digit8", 
-    Digit9 = "Digit9", 
-    Digit0 = "Digit0", 
-    Minus = "Minus", 
-    Equal = "Equal", 
-    Backspace = "Backspace", 
-    Tab = "Tab", 
-    KeyQ = "KeyQ", 
-    KeyW = "KeyW", 
-    KeyE = "KeyE", 
-    KeyR = "KeyR", 
-    KeyT = "KeyT", 
-    KeyY = "KeyY", 
-    KeyU = "KeyU", 
-    KeyI = "KeyI", 
-    KeyO = "KeyO", 
-    KeyP = "KeyP", 
-    BracketLeft = "BracketLeft", 
-    BracketRight = "BracketRight", 
-    Enter = "Enter", 
-    ControlLeft = "ControlLeft", 
-    KeyA = "KeyA", 
-    KeyS = "KeyS", 
-    KeyD = "KeyD", 
-    KeyF = "KeyF", 
-    KeyG = "KeyG", 
-    KeyH = "KeyH", 
-    KeyJ = "KeyJ", 
-    KeyK = "KeyK", 
-    KeyL = "KeyL", 
-    Semicolon = "Semicolon", 
-    Quote = "Quote", 
-    Backquote = "Backquote", 
-    ShiftLeft = "ShiftLeft", 
-    Backslash = "Backslash", 
-    KeyZ = "KeyZ", 
-    KeyX = "KeyX", 
-    KeyC = "KeyC", 
-    KeyV = "KeyV", 
-    KeyB = "KeyB", 
-    KeyN = "KeyN", 
-    KeyM = "KeyM", 
-    Comma = "Comma", 
-    Period = "Period", 
-    Slash = "Slash", 
-    ShiftRight = "ShiftRight", 
-    NumpadMultiply = "NumpadMultiply", 
-    AltLeft = "AltLeft", 
-    Space = "Space", 
-    CapsLock = "CapsLock", 
-    F1 = "F1", 
-    F2 = "F2", 
-    F3 = "F3", 
-    F4 = "F4", 
-    F5 = "F5", 
-    F6 = "F6", 
-    F7 = "F7", 
-    F8 = "F8", 
-    F9 = "F9", 
-    F10 = "F10", 
-    Pause = "Pause", 
-    ScrollLock = "ScrollLock", 
-    Numpad7 = "Numpad7", 
-    Numpad8 = "Numpad8", 
-    Numpad9 = "Numpad9", 
-    NumpadSubtract = "NumpadSubtract", 
-    Numpad4 = "Numpad4", 
-    Numpad5 = "Numpad5", 
-    Numpad6 = "Numpad6", 
-    NumpadAdd = "NumpadAdd", 
-    Numpad1 = "Numpad1", 
-    Numpad2 = "Numpad2", 
-    Numpad3 = "Numpad3", 
-    Numpad0 = "Numpad0", 
-    NumpadDecimal = "NumpadDecimal", 
-    PrintScreen = "PrintScreen", 
-    IntlBackslash = "IntlBackslash", 
-    F11 = "F11", 
-    F12 = "F12", 
-    NumpadEqual = "NumpadEqual", 
-    F13 = "F13", 
-    F14 = "F14", 
-    F15 = "F15", 
-    F16 = "F16", 
-    F17 = "F17", 
-    F18 = "F18", 
-    F19 = "F19", 
-    F20 = "F20", 
-    F21 = "F21", 
-    F22 = "F22", 
-    F23 = "F23", 
-    KanaMode = "KanaMode", 
-    Lang2 = "Lang2", 
-    Lang1 = "Lang1", 
-    IntlRo = "IntlRo", 
-    F24 = "F24", 
-    Convert = "Convert", 
-    NonConvert = "NonConvert", 
-    IntlYen = "IntlYen", 
-    NumpadComma = "NumpadComma", 
-    MediaTrackPrevious = "MediaTrackPrevious", 
-    MediaTrackNext = "MediaTrackNext", 
-    NumpadEnter = "NumpadEnter", 
-    ControlRight = "ControlRight", 
-    AudioVolumeMute = "AudioVolumeMute", 
-    LaunchApp2 = "LaunchApp2", 
-    MediaPlayPause = "MediaPlayPause", 
-    MediaStop = "MediaStop", 
-    VolumeDown = "VolumeDown", 
-    VolumeUp = "VolumeUp", 
-    BrowserHome = "BrowserHome", 
-    NumpadDivide = "NumpadDivide", 
-    AltRight = "AltRight", 
-    NumLock = "NumLock", 
-    Home = "Home", 
-    ArrowUp = "ArrowUp", 
-    PageUp = "PageUp", 
-    ArrowLeft = "ArrowLeft", 
-    ArrowRight = "ArrowRight", 
-    End = "End", 
-    ArrowDown = "ArrowDown", 
-    PageDown = "PageDown", 
-    Insert = "Insert", 
-    Delete = "Delete", 
-    MetaLeft = "MetaLeft", 
-    MetaRight = "MetaRight", 
-    ContextMenu = "ContextMenu", 
-    Power = "Power", 
-    BrowserSearch = "BrowserSearch", 
-    BrowserFavorites = "BrowserFavorites", 
-    BrowserRefresh = "BrowserRefresh", 
-    BrowserStop = "BrowserStop", 
-    BrowserForward = "BrowserForward", 
-    BrowserBack = "BrowserBack", 
-    LaunchApp1 = "LaunchApp1", 
-    LaunchMail = "LaunchMail", 
-    MediaSelect = "MediaSelect", 
+    Digit3 = "Digit3",
+    Digit4 = "Digit4",
+    Digit5 = "Digit5",
+    Digit6 = "Digit6",
+    Digit7 = "Digit7",
+    Digit8 = "Digit8",
+    Digit9 = "Digit9",
+    Digit0 = "Digit0",
+    Minus = "Minus",
+    Equal = "Equal",
+    Backspace = "Backspace",
+    Tab = "Tab",
+    KeyQ = "KeyQ",
+    KeyW = "KeyW",
+    KeyE = "KeyE",
+    KeyR = "KeyR",
+    KeyT = "KeyT",
+    KeyY = "KeyY",
+    KeyU = "KeyU",
+    KeyI = "KeyI",
+    KeyO = "KeyO",
+    KeyP = "KeyP",
+    BracketLeft = "BracketLeft",
+    BracketRight = "BracketRight",
+    Enter = "Enter",
+    ControlLeft = "ControlLeft",
+    KeyA = "KeyA",
+    KeyS = "KeyS",
+    KeyD = "KeyD",
+    KeyF = "KeyF",
+    KeyG = "KeyG",
+    KeyH = "KeyH",
+    KeyJ = "KeyJ",
+    KeyK = "KeyK",
+    KeyL = "KeyL",
+    Semicolon = "Semicolon",
+    Quote = "Quote",
+    Backquote = "Backquote",
+    ShiftLeft = "ShiftLeft",
+    Backslash = "Backslash",
+    KeyZ = "KeyZ",
+    KeyX = "KeyX",
+    KeyC = "KeyC",
+    KeyV = "KeyV",
+    KeyB = "KeyB",
+    KeyN = "KeyN",
+    KeyM = "KeyM",
+    Comma = "Comma",
+    Period = "Period",
+    Slash = "Slash",
+    ShiftRight = "ShiftRight",
+    NumpadMultiply = "NumpadMultiply",
+    AltLeft = "AltLeft",
+    Space = "Space",
+    CapsLock = "CapsLock",
+    F1 = "F1",
+    F2 = "F2",
+    F3 = "F3",
+    F4 = "F4",
+    F5 = "F5",
+    F6 = "F6",
+    F7 = "F7",
+    F8 = "F8",
+    F9 = "F9",
+    F10 = "F10",
+    Pause = "Pause",
+    ScrollLock = "ScrollLock",
+    Numpad7 = "Numpad7",
+    Numpad8 = "Numpad8",
+    Numpad9 = "Numpad9",
+    NumpadSubtract = "NumpadSubtract",
+    Numpad4 = "Numpad4",
+    Numpad5 = "Numpad5",
+    Numpad6 = "Numpad6",
+    NumpadAdd = "NumpadAdd",
+    Numpad1 = "Numpad1",
+    Numpad2 = "Numpad2",
+    Numpad3 = "Numpad3",
+    Numpad0 = "Numpad0",
+    NumpadDecimal = "NumpadDecimal",
+    PrintScreen = "PrintScreen",
+    IntlBackslash = "IntlBackslash",
+    F11 = "F11",
+    F12 = "F12",
+    NumpadEqual = "NumpadEqual",
+    F13 = "F13",
+    F14 = "F14",
+    F15 = "F15",
+    F16 = "F16",
+    F17 = "F17",
+    F18 = "F18",
+    F19 = "F19",
+    F20 = "F20",
+    F21 = "F21",
+    F22 = "F22",
+    F23 = "F23",
+    KanaMode = "KanaMode",
+    Lang2 = "Lang2",
+    Lang1 = "Lang1",
+    IntlRo = "IntlRo",
+    F24 = "F24",
+    Convert = "Convert",
+    NonConvert = "NonConvert",
+    IntlYen = "IntlYen",
+    NumpadComma = "NumpadComma",
+    MediaTrackPrevious = "MediaTrackPrevious",
+    MediaTrackNext = "MediaTrackNext",
+    NumpadEnter = "NumpadEnter",
+    ControlRight = "ControlRight",
+    AudioVolumeMute = "AudioVolumeMute",
+    LaunchApp2 = "LaunchApp2",
+    MediaPlayPause = "MediaPlayPause",
+    MediaStop = "MediaStop",
+    VolumeDown = "VolumeDown",
+    VolumeUp = "VolumeUp",
+    BrowserHome = "BrowserHome",
+    NumpadDivide = "NumpadDivide",
+    AltRight = "AltRight",
+    NumLock = "NumLock",
+    Home = "Home",
+    ArrowUp = "ArrowUp",
+    PageUp = "PageUp",
+    ArrowLeft = "ArrowLeft",
+    ArrowRight = "ArrowRight",
+    End = "End",
+    ArrowDown = "ArrowDown",
+    PageDown = "PageDown",
+    Insert = "Insert",
+    Delete = "Delete",
+    MetaLeft = "MetaLeft",
+    MetaRight = "MetaRight",
+    ContextMenu = "ContextMenu",
+    Power = "Power",
+    BrowserSearch = "BrowserSearch",
+    BrowserFavorites = "BrowserFavorites",
+    BrowserRefresh = "BrowserRefresh",
+    BrowserStop = "BrowserStop",
+    BrowserForward = "BrowserForward",
+    BrowserBack = "BrowserBack",
+    LaunchApp1 = "LaunchApp1",
+    LaunchMail = "LaunchMail",
+    MediaSelect = "MediaSelect",
 };
 
 // Another option:
@@ -162,13 +162,27 @@ export class MouseListener {
     public clientY: number = 0;
     public buttons: number = 0;
     public wheel: number = 0;
+    events: { pointer: (ev: MouseEvent) => void; wheel: (ev: WheelEvent) => void; contextmenu: (ev: MouseEvent) => void; };
 
     constructor() {
-        document.addEventListener("pointermove", this.onPointerEvent.bind(this));
-        document.addEventListener("pointerup", this.onPointerEvent.bind(this));
-        document.addEventListener("pointerdown", this.onPointerEvent.bind(this));
-        document.addEventListener("wheel", this.onWheelEvent.bind(this));
-        document.addEventListener("contextmenu", ev => ev.preventDefault());
+        this.events = {
+            pointer: this.onPointerEvent.bind(this),
+            wheel: this.onWheelEvent.bind(this),
+            contextmenu: (ev: MouseEvent) => ev.preventDefault(),
+        }
+        document.addEventListener("pointermove", this.events.pointer);
+        document.addEventListener("pointerup", this.events.pointer);
+        document.addEventListener("pointerdown", this.events.pointer);
+        document.addEventListener("wheel", this.events.wheel);
+        document.addEventListener("contextmenu", this.events.contextmenu);
+    }
+
+    dispose() {
+        document.removeEventListener("pointermove", this.events.pointer);
+        document.removeEventListener("pointerup", this.events.pointer);
+        document.removeEventListener("pointerdown", this.events.pointer);
+        document.removeEventListener("wheel", this.events.wheel);
+        document.removeEventListener("contextmenu", this.events.contextmenu);
     }
 
     private onPointerEvent(ev: MouseEvent) {
@@ -185,10 +199,22 @@ export class MouseListener {
 // Tracks the state of the keyboard
 export class KeyboardListener {
     public pressed: Set<KeyCode> = new Set();
+    events: { keydown: (ev: KeyboardEvent) => void; keyup: (ev: KeyboardEvent) => void; };
 
     constructor() {
-        document.addEventListener("keydown", this.onKeyDown.bind(this));
-        document.addEventListener("keyup", this.onKeyUp.bind(this));
+        this.events = {
+            keydown: this.onKeyDown.bind(this),
+            keyup: this.onKeyUp.bind(this),
+        }
+        document.addEventListener("keydown", this.events.keydown);
+        document.addEventListener("keyup", this.events.keyup);
+        // document.addEventListener("keydown", this.onKeyDown.bind(this));
+        // document.addEventListener("keyup", this.onKeyUp.bind(this));
+    }
+
+    dispose() {
+        document.removeEventListener("keydown", this.events.keydown);
+        document.removeEventListener("keyup", this.events.keyup);
     }
 
     private onKeyDown(ev: KeyboardEvent) {
@@ -212,7 +238,7 @@ export class Mouse {
 
     constructor(
         private readonly mouse_listener: MouseListener = new MouseListener(),
-    ) {}
+    ) { }
 
     isDown(button: MouseButton): Boolean {
         return Boolean(this.buttons & button);
@@ -234,7 +260,11 @@ export class Mouse {
         this.clientX = this.mouse_listener.clientX;
         this.clientY = this.mouse_listener.clientY;
         this.buttons = this.mouse_listener.buttons;
-    }        
+    }
+
+    dispose() {
+        this.mouse_listener.dispose();
+    }
 }
 
 // Presents the keyboard state
@@ -244,7 +274,7 @@ export class Keyboard {
 
     constructor(
         private readonly keyboard_listener: KeyboardListener = new KeyboardListener(),
-    ) {}
+    ) { }
 
     isDown(code: KeyCode): Boolean {
         return this.pressed.has(code);
@@ -262,6 +292,10 @@ export class Keyboard {
         this.prev_pressed = this.pressed;
         this.pressed = new Set(this.keyboard_listener.pressed);
     }
+
+    dispose() {
+        this.keyboard_listener.dispose();
+    }
 }
 
 // Presents mouse & keyboard states
@@ -269,7 +303,7 @@ export class Input {
     constructor(
         public readonly mouse: Mouse = new Mouse(),
         public readonly keyboard: Keyboard = new Keyboard(),
-    ) {}
+    ) { }
 
     startFrame() {
         this.mouse.startFrame();
