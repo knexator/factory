@@ -23,6 +23,8 @@ gui.add(CONFIG, "label_spacing", 10, 50);
 // current design:
 // no throughput, no delays, 
 
+// TODO: move several factories at once?
+
 class ItemKind {
   constructor(
     public name: string,
@@ -69,8 +71,6 @@ class Recipe {
   }
 }
 
-// use emojis! 😊☠️
-
 class Factory {
   constructor(
     public pos: Vec2,
@@ -93,20 +93,20 @@ const water = items[1];
 const potato = items[2];
 const mashed_potato = items[3];
 const dried_potato = items[4];
-let recipes = {
-  extract_water: Recipe.build(1, '', '💧'),
-  grow_potato: new Recipe([], [[1, potato]], 1),
-  dry_potato: new Recipe([[1, potato]], [[1, dried_potato]], 1),
-  mash_potato: new Recipe([[1, potato], [1, water]], [[1, mashed_potato]], 1),
-  mash_dried_potato: new Recipe([[1, dried_potato], [2, water]], [[1, mashed_potato]], 1),
-  build_score: new Recipe([[1, mashed_potato]], [[1, score]], 1),
-  score: new Recipe([[1, score]], [], 1),
-};
+let recipes = [
+  Recipe.build(100, '⭐', ''),
+  Recipe.build(100, '', '💧'),
+  Recipe.build(100, '', '🥔'),
+  Recipe.build(100, '🥔', '🧪'),
+  Recipe.build(100, '🥔💧', '🍜'),
+  Recipe.build(100, '🧪💧💧', '🍜'),
+  Recipe.build(100, '🍜', '⭐'),
+];
 
 let factories: Factory[] = [
-  new Factory(new Vec2(300, 0), recipes.score, true),
-  new Factory(new Vec2(-500, -100), recipes.extract_water, true),
-  new Factory(new Vec2(-500, 100), recipes.grow_potato, true),
+  new Factory(new Vec2(300, 0), recipes[0], true),
+  new Factory(new Vec2(-500, -100), recipes[1], true),
+  new Factory(new Vec2(-500, 100), recipes[2], true),
 ];
 
 let edges: { source: Factory, target: Factory }[] = [];
@@ -290,7 +290,7 @@ function every_frame(cur_timestamp: number) {
   });
   ctx.stroke();
 
-  if (interaction_state.tag === 'hovering_factory' && interaction_state.hovered_factory.recipe !== recipes.score) {
+  if (interaction_state.tag === 'hovering_factory' && interaction_state.hovered_factory.recipe !== recipes[0]) {
     ctx.fillText(interaction_state.hovered_factory.recipe.toString(), interaction_state.hovered_factory.pos.x + CONFIG.factory_size * 1.25, interaction_state.hovered_factory.pos.y);
   }
 
@@ -303,7 +303,7 @@ function every_frame(cur_timestamp: number) {
   }
 
   factories.forEach(fac => {
-    if (fac.recipe === recipes.score) {
+    if (fac.recipe === recipes[0]) {
       fillText(`Cost of producing one score unit: ${costOfOutput(fac)}`, fac.pos.addX(CONFIG.factory_size * 1.25));
     }
   });
