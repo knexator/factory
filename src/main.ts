@@ -29,7 +29,7 @@ class ItemKind {
   ) { }
 
   toString(): string {
-    return Object.entries(items).find(([key, item]) => item === this)![0];
+    return Object.entries(items).find(([_key, item]) => item === this)![0];
   }
 };
 
@@ -41,9 +41,14 @@ class Recipe {
   ) { }
 
   toString(): string {
-    return Object.entries(recipes).find(([key, recipe]) => recipe === this)![0];
+    const inputs = this.inputs.map(([amount, kind]) => amount === 1 ? kind.toString() : `${amount} ${kind.toString()}`).join(', ');
+    const outputs = this.outputs.map(([amount, kind]) => amount === 1 ? kind.toString() : `${amount} ${kind.toString()}`).join(', ');
+    return `${inputs} => ${outputs}, cost ${this.cost}`;
+    // return Object.entries(recipes).find(([_key, recipe]) => recipe === this)![0];
   }
 }
+
+// use emojis! 😊☠️
 
 class Factory {
   constructor(
@@ -201,7 +206,7 @@ function every_frame(cur_timestamp: number) {
         })) interaction_state.target = null;
       if (interaction_state.target && edges.some(({ source, target }) => {
         if (interaction_state.tag !== 'making_rail' || interaction_state.target === null) throw new Error();
-        return interaction_state.source === source && interaction_state.target === interaction_state.target;
+        return interaction_state.source === source && interaction_state.target === target;
       })) interaction_state.target = null;
 
       if (input.mouse.wasReleased(MouseButton.Right)) {
@@ -217,7 +222,8 @@ function every_frame(cur_timestamp: number) {
         if (interaction_state.tag !== 'making_factory') throw new Error();
         const selected = cur_mouse_pos.x > interaction_state.pos.x
           && inRange((cur_mouse_pos.y - interaction_state.pos.y) / CONFIG.label_spacing, k - .5, k + .5);
-        fillText(name, interaction_state.pos.add(new Vec2(selected ? 30 : 0, k * CONFIG.label_spacing)))
+        fillText(recipe.toString(), interaction_state.pos.add(new Vec2(selected ? 30 : 0, k * CONFIG.label_spacing)))
+        // fillText(name, interaction_state.pos.add(new Vec2(selected ? 30 : 0, k * CONFIG.label_spacing)))
         if (selected) {
           interaction_state.recipe = recipe;
         }
