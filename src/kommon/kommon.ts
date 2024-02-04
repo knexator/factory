@@ -58,6 +58,27 @@ export function objectMap<T, S>(object: Record<string, T>, map_fn: (x: T) => S):
     return result;
 }
 
+export class DefaultMap<K, V> {
+    constructor(
+        private init_fn: (key: K) => V,
+        public inner_map = new Map<K, V>(),
+    ) { }
+
+    get(key: K): V {
+        let result = this.inner_map.get(key);
+        if (result === undefined) {
+            result = this.init_fn(key);
+            this.inner_map.set(key, result);
+        }
+        return result;
+    }
+
+    set(key: K, value: V): void {
+        this.inner_map.set(key, value);
+    }
+}
+
+
 export class DefaultDict<T> {
     constructor(init_fn: () => T) {
         // typing doesn't work :(

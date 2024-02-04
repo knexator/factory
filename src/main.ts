@@ -2,7 +2,7 @@ import * as twgl from "twgl.js"
 import GUI from "lil-gui";
 import { Grid2D } from "./kommon/grid2D";
 import { Input, KeyCode, Mouse, MouseButton } from "./kommon/input";
-import { fromCount, objectMap, zip2 } from "./kommon/kommon";
+import { DefaultMap, fromCount, objectMap, zip2 } from "./kommon/kommon";
 import { mod, towards as approach, lerp, inRange, clamp, argmax, argmin, max, remap, clamp01 } from "./kommon/math";
 import { canvasFromAscii } from "./kommon/spritePS";
 import { initGL2, IVec, Vec2, Color, GenericDrawer, StatefulDrawer, CircleDrawer, m3, CustomSpriteDrawer, Transform, IRect, IColor, IVec2 } from "kanvas2d"
@@ -25,11 +25,13 @@ gui.add(CONFIG, "label_spacing", 10, 50);
 
 class ItemKind {
   constructor(
+    public name: string,
     public transport_cost: number,
   ) { }
 
   toString(): string {
-    return Object.entries(items).find(([_key, item]) => item === this)![0];
+    return this.name;
+    // return Object.entries(items).find(([_key, item]) => item === this)![0];
   }
 };
 
@@ -46,6 +48,25 @@ class Recipe {
     return `${inputs} => ${outputs}, cost ${this.cost}`;
     // return Object.entries(recipes).find(([_key, recipe]) => recipe === this)![0];
   }
+
+  static build(cost: number, inputs_str: string, outputs_str: string): Recipe {
+    let input_counts = new DefaultMap<string, number>(_ => 0);
+    let output_counts = new DefaultMap<string, number>(_ => 0);
+    [...inputs_str].forEach(name => input_counts.set(name, input_counts.get(name) + 1));
+    [...outputs_str].forEach(name => output_counts.set(name, output_counts.get(name) + 1));
+
+    return new Recipe(
+      [...input_counts.inner_map.entries()].map(([name, count]) => {
+        const item = single(items.filter(i => i.name === name));
+        return [count, item];
+      }),
+      [...output_counts.inner_map.entries()].map(([name, count]) => {
+        const item = single(items.filter(i => i.name === name));
+        return [count, item];
+      }),
+      cost
+    );
+  }
 }
 
 // use emojis! 😊☠️
@@ -58,22 +79,28 @@ class Factory {
   ) { }
 }
 
-let items = {
-  score: new ItemKind(10),
-  water: new ItemKind(.1),
-  potato: new ItemKind(1),
-  mashed_potato: new ItemKind(2),
-  dried_potato: new ItemKind(.1),
-};
+let items = [
+  new ItemKind('⭐', 10),
+  new ItemKind('💧', .1),
+  new ItemKind('🥔', 1),
+  new ItemKind('🍜', 2),
+  new ItemKind('🧪', .1),
+];
 
+
+const score = items[0];
+const water = items[1];
+const potato = items[2];
+const mashed_potato = items[3];
+const dried_potato = items[4];
 let recipes = {
-  extract_water: new Recipe([], [[1, items.water]], 1),
-  grow_potato: new Recipe([], [[1, items.potato]], 1),
-  dry_potato: new Recipe([[1, items.potato]], [[1, items.dried_potato]], 1),
-  mash_potato: new Recipe([[1, items.potato], [1, items.water]], [[1, items.mashed_potato]], 1),
-  mash_dried_potato: new Recipe([[1, items.dried_potato], [2, items.water]], [[1, items.mashed_potato]], 1),
-  build_score: new Recipe([[1, items.mashed_potato]], [[1, items.score]], 1),
-  score: new Recipe([[1, items.score]], [], 1),
+  extract_water: Recipe.build(1, '', '💧'),
+  grow_potato: new Recipe([], [[1, potato]], 1),
+  dry_potato: new Recipe([[1, potato]], [[1, dried_potato]], 1),
+  mash_potato: new Recipe([[1, potato], [1, water]], [[1, mashed_potato]], 1),
+  mash_dried_potato: new Recipe([[1, dried_potato], [2, water]], [[1, mashed_potato]], 1),
+  build_score: new Recipe([[1, mashed_potato]], [[1, score]], 1),
+  score: new Recipe([[1, score]], [], 1),
 };
 
 let factories: Factory[] = [
