@@ -29,6 +29,7 @@ gui.add(CONFIG, "label_spacing", 10, 50);
 class ItemKind {
   constructor(
     public name: string,
+    // how long it takes to travel 10px
     public transport_cost: number,
   ) { }
 
@@ -42,6 +43,7 @@ class Recipe {
   constructor(
     public inputs: [number, ItemKind][],
     public outputs: [number, ItemKind][],
+    // how many seconds between getting the inputs & generating the outputs // not really
     public cost: number,
   ) { }
 
@@ -77,6 +79,7 @@ class Factory {
     public pos: Vec2,
     public recipe: Recipe,
     public fixed: boolean,
+    // how many copies of the recipe are processed each second // not really
     public production: number = 0,
   ) { }
 }
@@ -85,6 +88,7 @@ class Edge {
   constructor(
     public source: Factory,
     public target: Factory,
+    // how many items arrive per second // not really
     public traffic: [number, ItemKind][] = [],
   ) { }
 
@@ -362,12 +366,26 @@ function every_frame(cur_timestamp: number) {
     const dist = edge.dist();
     edge.traffic.forEach(([amount, item]) => {
       if (amount === 0) return;
-      ctx.font = `${Math.round(amount) * 20}px Arial`;
-      const pos = Vec2.lerp(edge.source.pos, edge.target.pos, mod(.05 * cur_timestamp / (item.transport_cost * dist), 1));
-      fillText(item.name, pos);
+
+      for (let k = 0; k < 3 * amount; k++) {
+        const pos = Vec2.lerp(edge.source.pos, edge.target.pos, mod(k / (3 * amount) + .05 * cur_timestamp / (item.transport_cost * dist), 1));
+        fillText(item.name, pos);
+      }
+
+      // const items_in_transit = amount * item.transport_cost * dist / 100;
+      // // console.log(items_in_transit);
+      // for (let k = 0; k < items_in_transit; k++) {
+      //   const pos = Vec2.lerp(edge.source.pos, edge.target.pos, mod((.05 * cur_timestamp + k * 1000) / (item.transport_cost * dist), 1));
+      //   // const pos = Vec2.lerp(edge.source.pos, edge.target.pos, mod(.05 * cur_timestamp / (item.transport_cost * dist), 1));
+      //   fillText(item.name, pos);
+      // }
+
+      // ctx.font = `${Math.round(amount) * 20}px Arial`;
+      // const pos = Vec2.lerp(edge.source.pos, edge.target.pos, mod(.05 * cur_timestamp / (item.transport_cost * dist), 1));
+      // fillText(item.name, pos);
     });
   });
-  ctx.font = "20px Arial";
+  // ctx.font = "20px Arial";
 
   // if (interaction_state.tag === 'hovering_factory' && interaction_state.hovered_factory.recipe !== recipes[0]) {
   //   ctx.fillText(interaction_state.hovered_factory.recipe.toString(), interaction_state.hovered_factory.pos.x + CONFIG.factory_size * 1.25, interaction_state.hovered_factory.pos.y);
