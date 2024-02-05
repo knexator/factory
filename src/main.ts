@@ -93,10 +93,14 @@ const water = items[1];
 const potato = items[2];
 const mashed_potato = items[3];
 const dried_potato = items[4];
-let recipes = [
+
+let fixed_recipes = [
   Recipe.build(100, '⭐', ''),
   Recipe.build(100, '', '💧'),
   Recipe.build(100, '', '🥔'),
+];
+
+let user_recipes = [
   Recipe.build(100, '🥔', '🧪'),
   Recipe.build(100, '🥔💧', '🍜'),
   Recipe.build(100, '🧪💧💧', '🍜'),
@@ -104,9 +108,9 @@ let recipes = [
 ];
 
 let factories: Factory[] = [
-  new Factory(new Vec2(300, 0), recipes[0], true),
-  new Factory(new Vec2(-500, -100), recipes[1], true),
-  new Factory(new Vec2(-500, 100), recipes[2], true),
+  new Factory(new Vec2(300, 0), fixed_recipes[0], true),
+  new Factory(new Vec2(-500, -100), fixed_recipes[1], true),
+  new Factory(new Vec2(-500, 100), fixed_recipes[2], true),
 ];
 
 let edges: { source: Factory, target: Factory }[] = [];
@@ -245,11 +249,24 @@ function every_frame(cur_timestamp: number) {
       break;
     case "making_factory":
       interaction_state.recipe = null;
-      Object.entries(recipes).forEach(([name, recipe], k) => {
+      Object.entries(user_recipes).forEach(([name, recipe], k) => {
         if (interaction_state.tag !== 'making_factory') throw new Error();
-        const selected = cur_mouse_pos.x > interaction_state.pos.x
-          && inRange((cur_mouse_pos.y - interaction_state.pos.y) / CONFIG.label_spacing, k - .5, k + .5);
-        fillText(recipe.toString(), interaction_state.pos.add(new Vec2(selected ? 30 : 0, k * CONFIG.label_spacing)))
+        const selected = inRange((cur_mouse_pos.y - interaction_state.pos.y) / CONFIG.label_spacing, k - .5, k + .5);
+        {
+          const in_str = recipe.inputs.map(([count, kind]) => kind.name.repeat(count)).join('');
+          const out_str = recipe.outputs.map(([count, kind]) => kind.name.repeat(count)).join('');
+          ctx.textAlign = 'center';
+          ctx.textAlign = 'right';
+          fillText(in_str, interaction_state.pos.add(new Vec2(-CONFIG.factory_size * 1.25, k * CONFIG.label_spacing)));
+          ctx.textAlign = 'left';
+          fillText(out_str, interaction_state.pos.add(new Vec2(CONFIG.factory_size * 1.25, k * CONFIG.label_spacing)));
+
+          if (selected) {
+            ctx.textAlign = 'center';
+            fillText('->', interaction_state.pos.addY(k * CONFIG.label_spacing));
+          }
+        }
+        // fillText(recipe.toString(), interaction_state.pos.add(new Vec2(selected ? 30 : 0, k * CONFIG.label_spacing)))
         // fillText(name, interaction_state.pos.add(new Vec2(selected ? 30 : 0, k * CONFIG.label_spacing)))
         if (selected) {
           interaction_state.recipe = recipe;
@@ -283,6 +300,15 @@ function every_frame(cur_timestamp: number) {
   })
   ctx.fill();
 
+  factories.forEach(fac => {
+    const in_str = fac.recipe.inputs.map(([count, kind]) => kind.name.repeat(count)).join('');
+    const out_str = fac.recipe.outputs.map(([count, kind]) => kind.name.repeat(count)).join('');
+    ctx.textAlign = 'right';
+    fillText(in_str, fac.pos.addX(-CONFIG.factory_size * 1.25));
+    ctx.textAlign = 'left';
+    fillText(out_str, fac.pos.addX(CONFIG.factory_size * 1.25));
+  })
+
   ctx.beginPath();
   edges.forEach(({ source, target }) => {
     moveTo(source.pos);
@@ -290,9 +316,9 @@ function every_frame(cur_timestamp: number) {
   });
   ctx.stroke();
 
-  if (interaction_state.tag === 'hovering_factory' && interaction_state.hovered_factory.recipe !== recipes[0]) {
-    ctx.fillText(interaction_state.hovered_factory.recipe.toString(), interaction_state.hovered_factory.pos.x + CONFIG.factory_size * 1.25, interaction_state.hovered_factory.pos.y);
-  }
+  // if (interaction_state.tag === 'hovering_factory' && interaction_state.hovered_factory.recipe !== recipes[0]) {
+  //   ctx.fillText(interaction_state.hovered_factory.recipe.toString(), interaction_state.hovered_factory.pos.x + CONFIG.factory_size * 1.25, interaction_state.hovered_factory.pos.y);
+  // }
 
   if (interaction_state.tag === 'making_rail') {
     let target_pos = interaction_state.target?.pos ?? cur_mouse_pos;
@@ -303,7 +329,7 @@ function every_frame(cur_timestamp: number) {
   }
 
   factories.forEach(fac => {
-    if (fac.recipe === recipes[0]) {
+    if (fac.recipe === fixed_recipes[0]) {
       fillText(`Cost of producing one score unit: ${costOfOutput(fac)}`, fac.pos.addX(CONFIG.factory_size * 1.25));
     }
   });
@@ -349,7 +375,7 @@ if (import.meta.hot) {
   if (import.meta.hot.data.edges) {
     factories = import.meta.hot.data.factories;
     edges = import.meta.hot.data.edges;
-    recipes = import.meta.hot.data.recipes;
+    user_recipes = import.meta.hot.data.recipes;
     items = import.meta.hot.data.items;
   }
 
@@ -362,7 +388,7 @@ if (import.meta.hot) {
     gui.destroy();
     data.factories = factories;
     data.edges = edges;
-    data.recipes = recipes;
+    data.recipes = user_recipes;
     data.items = items;
   })
 }
