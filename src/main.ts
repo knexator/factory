@@ -2,7 +2,7 @@ import * as twgl from "twgl.js"
 import GUI from "lil-gui";
 import { Grid2D } from "./kommon/grid2D";
 import { Input, KeyCode, Mouse, MouseButton } from "./kommon/input";
-import { DefaultMap, fromCount, objectMap, zip2 } from "./kommon/kommon";
+import { DefaultMap, deepcopy, fromCount, objectMap, zip2 } from "./kommon/kommon";
 import { mod, towards as approach, lerp, inRange, clamp, argmax, argmin, max, remap, clamp01 } from "./kommon/math";
 import { canvasFromAscii } from "./kommon/spritePS";
 import { initGL2, IVec, Vec2, Color, GenericDrawer, StatefulDrawer, CircleDrawer, m3, CustomSpriteDrawer, Transform, IRect, IColor, IVec2 } from "kanvas2d"
@@ -22,6 +22,7 @@ gui.add(CONFIG, "label_spacing", 10, 50);
 
 // current design:
 // no throughput, no delays, 
+// single goal factory
 
 // TODO: move several factories at once?
 
@@ -76,7 +77,20 @@ class Factory {
     public pos: Vec2,
     public recipe: Recipe,
     public fixed: boolean,
+    public production: number = 0,
   ) { }
+}
+
+class Edge {
+  constructor(
+    public source: Factory,
+    public target: Factory,
+    public traffic: [number, ItemKind][] = [],
+  ) { }
+
+  dist(): number {
+    return this.source.pos.sub(this.target.pos).mag();
+  }
 }
 
 let items = [
@@ -87,12 +101,6 @@ let items = [
   new ItemKind('🧪', .1),
 ];
 
-
-const score = items[0];
-const water = items[1];
-const potato = items[2];
-const mashed_potato = items[3];
-const dried_potato = items[4];
 
 let fixed_recipes = [
   Recipe.build(100, '⭐', ''),
@@ -113,7 +121,10 @@ let factories: Factory[] = [
   new Factory(new Vec2(-500, 100), fixed_recipes[2], true),
 ];
 
-let edges: { source: Factory, target: Factory }[] = [];
+let master_factory = factories[0];
+let master_item = items[0];
+
+let edges: Edge[] = [];
 
 // function computeScore(): number {
 //   return costOfOutput(single(factories.filter(x => x.recipe === recipes.score)));
@@ -147,6 +158,35 @@ function costOfOutput(factory: Factory): number {
     total_cost += min_cost;
   });
   return total_cost;
+}
+
+function computeScore(): number {
+  let cost = 0;
+  factories.forEach(f => {
+    cost += f.recipe.cost * f.production;
+  });
+  edges.forEach(e => {
+    const dist = e.dist();
+    e.traffic.forEach(([amount, item]) => {
+      cost += dist * amount * item.transport_cost;
+    });
+  });
+  if (master_factory.production === 0) return Infinity;
+  return cost / master_factory.production;
+
+  // const final_edges = edges.filter(x => x.target === master_factory);
+  // if (final_edges.length === 0) return Infinity;
+  // return final_edges.reduce((acc, edge) => acc + (edge.traffic.find(([_value, item]) => item === master_item)!)[0], 0);
+}
+
+function recalEdgeWeightsAndFactoryProductions() {
+  // TODO: everything
+  edges.forEach(edge => {
+    edge.traffic = deepcopy(edge.source.recipe.outputs)
+  });
+  factories.forEach(f => {
+    f.production = 1;
+  });
 }
 
 // an object at [camera.center] will be drawn on the center of the screen
@@ -242,7 +282,7 @@ function every_frame(cur_timestamp: number) {
 
       if (input.mouse.wasReleased(MouseButton.Right)) {
         if (interaction_state.target !== null) {
-          edges.push({ source: interaction_state.source, target: interaction_state.target });
+          edges.push(new Edge(interaction_state.source, interaction_state.target));
         }
         interaction_state = { tag: 'none' };
       }
@@ -316,6 +356,19 @@ function every_frame(cur_timestamp: number) {
   });
   ctx.stroke();
 
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  edges.forEach(edge => {
+    const dist = edge.dist();
+    edge.traffic.forEach(([amount, item]) => {
+      if (amount === 0) return;
+      ctx.font = `${Math.round(amount) * 20}px Arial`;
+      const pos = Vec2.lerp(edge.source.pos, edge.target.pos, mod(.05 * cur_timestamp / (item.transport_cost * dist), 1));
+      fillText(item.name, pos);
+    });
+  });
+  ctx.font = "20px Arial";
+
   // if (interaction_state.tag === 'hovering_factory' && interaction_state.hovered_factory.recipe !== recipes[0]) {
   //   ctx.fillText(interaction_state.hovered_factory.recipe.toString(), interaction_state.hovered_factory.pos.x + CONFIG.factory_size * 1.25, interaction_state.hovered_factory.pos.y);
   // }
@@ -328,11 +381,10 @@ function every_frame(cur_timestamp: number) {
     ctx.stroke();
   }
 
-  factories.forEach(fac => {
-    if (fac.recipe === fixed_recipes[0]) {
-      fillText(`Cost of producing one score unit: ${costOfOutput(fac)}`, fac.pos.addX(CONFIG.factory_size * 1.25));
-    }
-  });
+  ctx.textAlign = 'left';
+  recalEdgeWeightsAndFactoryProductions();
+  fillText(`Cost of producing one score unit: ${computeScore()}`, master_factory.pos.addX(CONFIG.factory_size * 1.25));
+  fillText(`other Cost of producing one score unit: ${costOfOutput(master_factory)}`, master_factory.pos.addX(CONFIG.factory_size * 1.25).addY(CONFIG.label_spacing));
 
   animation_id = requestAnimationFrame(every_frame);
 }
@@ -374,9 +426,12 @@ function fillText(text: string, pos: Vec2) {
 if (import.meta.hot) {
   if (import.meta.hot.data.edges) {
     factories = import.meta.hot.data.factories;
+    master_factory = factories[0];
     edges = import.meta.hot.data.edges;
-    user_recipes = import.meta.hot.data.recipes;
+    user_recipes = import.meta.hot.data.user_recipes;
+    fixed_recipes = import.meta.hot.data.fixed_recipes;
     items = import.meta.hot.data.items;
+    master_item = items[0];
   }
 
   import.meta.hot.accept();
@@ -388,7 +443,8 @@ if (import.meta.hot) {
     gui.destroy();
     data.factories = factories;
     data.edges = edges;
-    data.recipes = user_recipes;
+    data.user_recipes = user_recipes;
+    data.fixed_recipes = fixed_recipes;
     data.items = items;
   })
 }

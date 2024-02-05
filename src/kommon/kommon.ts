@@ -1,3 +1,13 @@
+export function deepcopy<T>(thing: T): T {
+    // TODO: lots to do
+    if (Array.isArray(thing)) {
+        // @ts-ignore
+        return thing.map(x => deepcopy(x));
+    } else {
+        return thing;
+    }
+}
+
 export function fromCount<T>(n: number, callback: (index: number) => T): T[] {
     let result = Array(n);
     for (let k = 0; k < n; k++) {
