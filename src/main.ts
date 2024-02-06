@@ -50,13 +50,6 @@ class Recipe {
     public cost: number,
   ) { }
 
-  toString(): string {
-    const inputs = this.inputs.map(([amount, kind]) => amount === 1 ? kind.toString() : `${amount} ${kind.toString()}`).join(', ');
-    const outputs = this.outputs.map(([amount, kind]) => amount === 1 ? kind.toString() : `${amount} ${kind.toString()}`).join(', ');
-    return `${inputs} => ${outputs}, cost ${this.cost}`;
-    // return Object.entries(recipes).find(([_key, recipe]) => recipe === this)![0];
-  }
-
   static build(cost: number, inputs_str: string, outputs_str: string): Recipe {
     let input_counts = new DefaultMap<string, number>(_ => 0);
     let output_counts = new DefaultMap<string, number>(_ => 0);
@@ -100,12 +93,14 @@ class Edge {
   }
 }
 
+// MASHED POTATO
 let items = [
   new ItemKind('⭐', 10, 0),
   new ItemKind('💧', .1, 1),
   new ItemKind('🥔', 1, 2),
   new ItemKind('🍜', 2, 3),
   new ItemKind('🧪', .1, 4),
+  new ItemKind('🚂', .1, 5),
 ];
 
 
@@ -116,10 +111,12 @@ let fixed_recipes = [
 ];
 
 let user_recipes = [
-  Recipe.build(100, '🥔', '🧪'),
-  Recipe.build(100, '🥔💧', '🍜'),
-  Recipe.build(100, '🧪💧💧', '🍜'),
   Recipe.build(100, '🍜', '⭐'),
+  Recipe.build(100, '🥔💧', '🍜'),
+  Recipe.build(100, '🥔', '🧪'),
+  Recipe.build(100, '🧪💧💧', '🍜'),
+  Recipe.build(100, '🧪🧪🧪🧪🧪', '🚂🧪'),
+  Recipe.build(100, '🚂🧪', '🧪🧪🧪🧪🧪'),
 ];
 
 let factories: Factory[] = [
@@ -127,6 +124,38 @@ let factories: Factory[] = [
   new Factory(new Vec2(-500, -100), fixed_recipes[1], true),
   new Factory(new Vec2(-500, 100), fixed_recipes[2], true),
 ];
+
+
+// RED SCIENCE
+// let items = [
+//   new ItemKind('🔴', 100 / 200, 0),
+//   new ItemKind(' 🧡', 100 / 100, 1),
+//   new ItemKind('⛏️🧱', 1, 2),
+//   new ItemKind('🍜', 2, 3),
+//   new ItemKind('🧪', .1, 4),
+// ];
+// 🧱🔩
+// 🔌⚙️
+
+
+// let fixed_recipes = [
+//   Recipe.build(100, '⭐', ''),
+//   Recipe.build(100, '', '💧'),
+//   Recipe.build(100, '', '🥔'),
+// ];
+
+// let user_recipes = [
+//   Recipe.build(100, '🥔', '🧪'),
+//   Recipe.build(100, '🥔 💧', '🍜'),
+//   Recipe.build(100, '🧪 💧 💧', '🍜'),
+//   Recipe.build(100, '🍜', '⭐'),
+// ];
+
+// let factories: Factory[] = [
+//   new Factory(new Vec2(300, 0), fixed_recipes[0], true),
+//   new Factory(new Vec2(-500, -100), fixed_recipes[1], true),
+//   new Factory(new Vec2(-500, 100), fixed_recipes[2], true),
+// ];
 
 let edges: Edge[] = [];
 
@@ -339,8 +368,8 @@ function every_frame(cur_timestamp: number) {
         if (interaction_state.tag !== 'making_factory') throw new Error();
         const selected = inRange((cur_mouse_pos.y - interaction_state.pos.y) / CONFIG.label_spacing, k - .5, k + .5);
         {
-          const in_str = recipe.inputs.map(([count, kind]) => kind.name.repeat(count)).join('');
-          const out_str = recipe.outputs.map(([count, kind]) => kind.name.repeat(count)).join('');
+          const in_str = resourcesToString(recipe.inputs);
+          const out_str = resourcesToString(recipe.outputs);
           ctx.textAlign = 'center';
           ctx.textAlign = 'right';
           fillText(in_str, interaction_state.pos.add(new Vec2(-CONFIG.factory_size * 1.25, k * CONFIG.label_spacing)));
@@ -387,8 +416,8 @@ function every_frame(cur_timestamp: number) {
   ctx.fill();
 
   factories.forEach(fac => {
-    const in_str = fac.recipe.inputs.map(([count, kind]) => kind.name.repeat(count)).join('');
-    const out_str = fac.recipe.outputs.map(([count, kind]) => kind.name.repeat(count)).join('');
+    const in_str = resourcesToString(fac.recipe.inputs);
+    const out_str = resourcesToString(fac.recipe.outputs);
     ctx.textAlign = 'right';
     fillText(in_str, fac.pos.addX(-CONFIG.factory_size * 1.25));
     ctx.textAlign = 'left';
@@ -410,7 +439,7 @@ function every_frame(cur_timestamp: number) {
       if (amount === 0) return;
 
       for (let k = 0; k < 3 * amount; k++) {
-        const pos = Vec2.lerp(edge.source.pos, edge.target.pos, mod(k / (3 * amount) + .05 * cur_timestamp / (item.transport_cost * dist), 1));
+        const pos = Vec2.lerp(edge.source.pos, edge.target.pos, mod(item.id / items.length + k / (3 * amount) + .05 * cur_timestamp / (item.transport_cost * dist), 1));
         fillText(item.name, pos);
       }
 
@@ -446,6 +475,19 @@ function every_frame(cur_timestamp: number) {
 
   if (needs_recalc) {
     recalEdgeWeightsAndFactoryProductions();
+  }
+
+  // debug
+  if (input.keyboard.wasPressed(KeyCode.Space)) {
+    factories.forEach((f, k) => {
+      console.log(`Factory ${k}, ${resourcesToString(f.recipe.inputs)} -> ${resourcesToString(f.recipe.outputs)}, at ${f.production}`);
+    });
+    edges.forEach((e, k) => {
+      console.log(`Edge ${k}, ${factories.indexOf(e.source)} -> ${factories.indexOf(e.target)}:`);
+      e.traffic.forEach(([amount, item]) => {
+        console.log(`\t${item.toString()}: ${amount}`);
+      });
+    })
   }
 
   animation_id = requestAnimationFrame(every_frame);
@@ -485,13 +527,16 @@ function fillText(text: string, pos: Vec2) {
   ctx.fillText(text, pos.x, pos.y);
 }
 
+function resourcesToString(resources: [number, ItemKind][]): string {
+  return resources.map(([count, item]) => item.name.repeat(count)).join('');
+}
+
 if (import.meta.hot) {
   if (import.meta.hot.data.edges) {
     factories = import.meta.hot.data.factories;
     master_factory = factories[0];
     edges = import.meta.hot.data.edges;
     user_recipes = import.meta.hot.data.user_recipes;
-    fixed_recipes = import.meta.hot.data.fixed_recipes;
     items = import.meta.hot.data.items;
   }
 
@@ -505,7 +550,6 @@ if (import.meta.hot) {
     data.factories = factories;
     data.edges = edges;
     data.user_recipes = user_recipes;
-    data.fixed_recipes = fixed_recipes;
     data.items = items;
   })
 }
