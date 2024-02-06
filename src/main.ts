@@ -135,7 +135,7 @@ class ItemKind {
   }
 };
 
-class Recipe {
+class VanillaRecipe {
   constructor(
     public inputs: [number, ItemKind][],
     public outputs: [number, ItemKind][],
@@ -149,7 +149,7 @@ class Recipe {
     if (inputs_str != '') inputs_str.split(',').forEach(name => input_counts.set(name, input_counts.get(name) + 1));
     if (outputs_str != '') outputs_str.split(',').forEach(name => output_counts.set(name, output_counts.get(name) + 1));
 
-    return new Recipe(
+    return new VanillaRecipe(
       [...input_counts.inner_map.entries()].map(([name, count]) => {
         const item = single(items.filter(i => i.name === name));
         return [count, item];
@@ -162,6 +162,8 @@ class Recipe {
     );
   }
 }
+
+type Recipe = VanillaRecipe | 'any2any';
 
 class Factory {
   constructor(
@@ -194,8 +196,9 @@ let master_factory: Factory;
 
 function setRuleset(ruleset: Ruleset): void {
   items = ruleset.items.map(([name, cost], k) => new ItemKind(name, cost, k));
-  let fixed_recipes = ruleset.fixed_recipes.map(([in_str, out_str]) => Recipe.build(100, in_str, out_str));
-  user_recipes = ruleset.user_recipes.map(([in_str, out_str]) => Recipe.build(100, in_str, out_str));
+  let fixed_recipes = ruleset.fixed_recipes.map(([in_str, out_str]) => VanillaRecipe.build(100, in_str, out_str));
+  user_recipes = ruleset.user_recipes.map(([in_str, out_str]) => VanillaRecipe.build(100, in_str, out_str));
+  user_recipes.unshift('any2any');
   factories = ruleset.fixed_factories.map(([recipe_index, pos]) => new Factory(pos, fixed_recipes[recipe_index], true));
   edges = [];
   master_factory = factories[0];
@@ -218,9 +221,9 @@ async function recalcEdgeWeightsAndFactoryProductions() {
   if (CONFIG.auto_edges) {
     edges = [];
     factories.forEach(source => {
-      const inbounds = source.recipe.outputs.map(([_, item]) => item);
+      const inbounds = source.recipe === 'any2any' ? items : source.recipe.outputs.map(([_, item]) => item);
       factories.forEach(target => {
-        const outbounds = target.recipe.inputs.map(([_, item]) => item);
+        const outbounds = target.recipe === 'any2any' ? items : target.recipe.inputs.map(([_, item]) => item);
         const traffic = inbounds.filter(value => outbounds.includes(value)).map(value => {
           return [0, value];
         }) as [number, ItemKind][];
@@ -231,8 +234,8 @@ async function recalcEdgeWeightsAndFactoryProductions() {
     });
   } else {
     edges.forEach(edge => {
-      const inputs = edge.source.recipe.outputs.map(([_, item]) => item);
-      const outputs = edge.target.recipe.inputs.map(([_, item]) => item);
+      const inputs = edge.source.recipe === 'any2any' ? items : edge.source.recipe.outputs.map(([_, item]) => item);
+      const outputs = edge.target.recipe === 'any2any' ? items : edge.target.recipe.inputs.map(([_, item]) => item);
       edge.traffic = inputs.filter(value => outputs.includes(value)).map(value => {
         return [0, value];
       });
@@ -248,7 +251,7 @@ async function recalcEdgeWeightsAndFactoryProductions() {
       direction: glpk.GLP_MIN,
       name: "cost",
       vars: [
-        ...factories.map((f, factory_id) => ({ name: `production_${factory_id}`, coef: f.recipe.cost })),
+        ...factories.map((f, factory_id) => ({ name: `production_${factory_id}`, coef: f.recipe === 'any2any' ? 100 : f.recipe.cost })),
         ...edges.flatMap((e, edge_id) => e.traffic.map(([_, item]) => {
           return { name: `transport_${edge_id}_${item.id}`, coef: e.dist() * item.transport_cost };
         }))
@@ -262,8 +265,56 @@ async function recalcEdgeWeightsAndFactoryProductions() {
         ],
         bnds: { type: glpk.GLP_FX, ub: 1, lb: 1 }
       },
+      // ...factories.flatMap((f, factory_id) => {
+      //   if (f.recipe !== 'any2any') return [];
+      //   let asdf: { name: string, coef: number }[] = [];
+      //   edges.forEach((e, edge_id) => {
+      //     if (e.target === f) {
+      //       e.traffic.forEach(([_, edge_item]) => {
+      //         asdf.push({ name: `transport_${edge_id}_${edge_item.id}`, coef: 1 });
+      //       });
+      //     } 
+      //     if (e.source === f) {
+      //       e.traffic.forEach(([_, edge_item]) => {
+      //         asdf.push({ name: `transport_${edge_id}_${edge_item.id}`, coef: -1 });
+      //       });
+      //     }
+      //   });
+      //   console.log(asdf);
+      //   return {
+      //     name: `balancearound_${factory_id}`,
+      //     vars: asdf,
+      //     bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
+      //   }
+      // }),
+      // TODO: fix!!
       ...factories.flatMap((f, factory_id) => {
-        return f.recipe.inputs.map(([amount, item], _) => {
+        if (f.recipe !== 'any2any') return [];
+        return items.map(item => {
+          let asdf: { name: string, coef: number }[] = [];
+          edges.forEach((e, edge_id) => {
+            if (e.source === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: -1 });
+            }
+            if (e.target === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
+            }
+          });
+          // if (asdf.length > 0) {
+          return {
+            name: `balancearound_${factory_id}_${item.id}`,
+            vars: asdf,
+            bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
+          }
+          // } else {
+          //   return null;
+          // }
+        }).filter(x => x.vars.length > 0);
+      }),
+
+
+      ...factories.flatMap((f, factory_id) => {
+        return f.recipe === 'any2any' ? [] : f.recipe.inputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
             if (e.target === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
@@ -280,7 +331,7 @@ async function recalcEdgeWeightsAndFactoryProductions() {
         })
       }),
       ...factories.flatMap((f, factory_id) => {
-        return f.recipe.outputs.map(([amount, item], _) => {
+        return f.recipe === 'any2any' ? [] : f.recipe.outputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
             if (e.source === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
@@ -407,10 +458,10 @@ function every_frame(cur_timestamp: number) {
 
       // ensure valid target
       if (interaction_state.target === interaction_state.source) interaction_state.target = null;
-      if (interaction_state.target !== null &&
+      if (interaction_state.target !== null && interaction_state.source.recipe !== 'any2any' &&
         !interaction_state.source.recipe.outputs.some(([_, in_kind]) => {
           if (interaction_state.tag !== 'making_rail' || interaction_state.target === null) throw new Error();
-          return interaction_state.target.recipe.inputs.some(([_, out_kind]) => in_kind === out_kind);
+          return interaction_state.target.recipe === 'any2any' || interaction_state.target.recipe.inputs.some(([_, out_kind]) => in_kind === out_kind);
         })) interaction_state.target = null;
       if (interaction_state.target && edges.some(({ source, target }) => {
         if (interaction_state.tag !== 'making_rail' || interaction_state.target === null) throw new Error();
@@ -431,8 +482,8 @@ function every_frame(cur_timestamp: number) {
         if (interaction_state.tag !== 'making_factory') throw new Error();
         const selected = inRange((cur_mouse_pos.y - interaction_state.pos.y) / CONFIG.label_spacing, k - .5, k + .5);
         {
-          const in_str = resourcesToString(recipe.inputs);
-          const out_str = resourcesToString(recipe.outputs);
+          const in_str = recipe === 'any2any' ? '?' : resourcesToString(recipe.inputs);
+          const out_str = recipe === 'any2any' ? '?' : resourcesToString(recipe.outputs);
           ctx.textAlign = 'center';
           ctx.textAlign = 'right';
           fillText(in_str, interaction_state.pos.add(new Vec2(-CONFIG.factory_size * 1.25, k * CONFIG.label_spacing)));
@@ -503,8 +554,8 @@ function every_frame(cur_timestamp: number) {
   ctx.fill();
 
   factories.forEach(fac => {
-    const in_str = resourcesToString(fac.recipe.inputs);
-    const out_str = resourcesToString(fac.recipe.outputs);
+    const in_str = fac.recipe === 'any2any' ? '?' : resourcesToString(fac.recipe.inputs);
+    const out_str = fac.recipe === 'any2any' ? '?' : resourcesToString(fac.recipe.outputs);
     ctx.textAlign = 'right';
     fillText(in_str, fac.pos.addX(-CONFIG.factory_size * 1.25));
     ctx.textAlign = 'left';
@@ -560,7 +611,11 @@ function every_frame(cur_timestamp: number) {
   // debug
   if (input.keyboard.wasPressed(KeyCode.Space)) {
     factories.forEach((f, k) => {
-      console.log(`Factory ${k}, ${resourcesToString(f.recipe.inputs)} -> ${resourcesToString(f.recipe.outputs)}, at ${f.production}`);
+      if (f.recipe === 'any2any') {
+        console.log(`Factory ${k}, ? -> ?, at ${f.production}`);
+      } else {
+        console.log(`Factory ${k}, ${resourcesToString(f.recipe.inputs)} -> ${resourcesToString(f.recipe.outputs)}, at ${f.production}`);
+      }
     });
     edges.forEach((e, k) => {
       console.log(`Edge ${k}, ${factories.indexOf(e.source)} -> ${factories.indexOf(e.target)}:`);
