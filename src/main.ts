@@ -6,7 +6,9 @@ import { DefaultMap, deepcopy, fromCount, objectMap, zip2 } from "./kommon/kommo
 import { mod, towards as approach, lerp, inRange, clamp, argmax, argmin, max, remap, clamp01 } from "./kommon/math";
 import { canvasFromAscii } from "./kommon/spritePS";
 import { initGL2, IVec, Vec2, Color, GenericDrawer, StatefulDrawer, CircleDrawer, m3, CustomSpriteDrawer, Transform, IRect, IColor, IVec2 } from "kanvas2d"
+import GLPK from "glpk.js"
 
+const glpk = await GLPK();
 const input = new Input();
 const canvas = document.querySelector("canvas")!;
 const ctx = canvas.getContext("2d")!;
@@ -31,6 +33,7 @@ class ItemKind {
     public name: string,
     // how long it takes to travel 10px
     public transport_cost: number,
+    public id: number,
   ) { }
 
   toString(): string {
@@ -98,11 +101,11 @@ class Edge {
 }
 
 let items = [
-  new ItemKind('⭐', 10),
-  new ItemKind('💧', .1),
-  new ItemKind('🥔', 1),
-  new ItemKind('🍜', 2),
-  new ItemKind('🧪', .1),
+  new ItemKind('⭐', 10, 0),
+  new ItemKind('💧', .1, 1),
+  new ItemKind('🥔', 1, 2),
+  new ItemKind('🍜', 2, 3),
+  new ItemKind('🧪', .1, 4),
 ];
 
 
@@ -125,72 +128,108 @@ let factories: Factory[] = [
   new Factory(new Vec2(-500, 100), fixed_recipes[2], true),
 ];
 
-let master_factory = factories[0];
-let master_item = items[0];
-
 let edges: Edge[] = [];
 
-// function computeScore(): number {
-//   return costOfOutput(single(factories.filter(x => x.recipe === recipes.score)));
-// }
+let master_factory = factories[0];
+let master_cost = Infinity;
+async function recalEdgeWeightsAndFactoryProductions() {
 
-// TODO: we assume no cycles
-// TODO: we assume 1 output per recipe & 1 input per ingredient
-// TODO: we are assuming all outputs get consumed, don't do this
-// TODO: let user solve the optimization problem?
-function costOfOutput(factory: Factory): number {
-  const input_factories = edges.filter(({ target }) => target === factory).map(({ source }) => ({ source, cost: costOfOutput(source) }));
-  let total_cost = factory.recipe.cost;
-
-  // const inputs = input_factories.flatMap(({producing_factory}) => producing_factory.recipe.outputs.map(([produced_amount, produced_item]) => (
-  //   {producing_factory, produced_amount, produced_item}
-  // )));
-  // const valid_in = input_factories.filter(({ source }) => source.recipe.outputs.some(([_amnt, out]) => out === item));
-  factory.recipe.inputs.forEach(([required_amount, required_item]) => {
-    let min_cost = Infinity;
-    input_factories.forEach(({ source, cost }) => {
-      source.recipe.outputs.forEach(([produced_amount, produced_item]) => {
-        if (produced_item !== required_item) return;
-        const production_cost = cost * required_amount / produced_amount;
-        const transport_cost = required_amount * required_item.transport_cost * (source.pos.sub(factory.pos).mag());
-        const cur_cost = production_cost + transport_cost;
-        if (cur_cost < min_cost) {
-          min_cost = cur_cost;
-        }
-      })
+  function allZero() {
+    edges.forEach(edge => {
+      edge.traffic = [];
     });
-    total_cost += min_cost;
-  });
-  return total_cost;
-}
-
-function computeScore(): number {
-  let cost = 0;
-  factories.forEach(f => {
-    cost += f.recipe.cost * f.production;
-  });
-  edges.forEach(e => {
-    const dist = e.dist();
-    e.traffic.forEach(([amount, item]) => {
-      cost += dist * amount * item.transport_cost;
+    factories.forEach(f => {
+      f.production = 0;
     });
-  });
-  if (master_factory.production === 0) return Infinity;
-  return cost / master_factory.production;
+  }
 
-  // const final_edges = edges.filter(x => x.target === master_factory);
-  // if (final_edges.length === 0) return Infinity;
-  // return final_edges.reduce((acc, edge) => acc + (edge.traffic.find(([_value, item]) => item === master_item)!)[0], 0);
-}
-
-function recalEdgeWeightsAndFactoryProductions() {
-  // TODO: everything
   edges.forEach(edge => {
-    edge.traffic = deepcopy(edge.source.recipe.outputs)
+    const inputs = edge.source.recipe.outputs.map(([_, item]) => item);
+    const outputs = edge.target.recipe.inputs.map(([_, item]) => item);
+    edge.traffic = inputs.filter(value => outputs.includes(value)).map(value => {
+      return [0, value];
+    });
   });
   factories.forEach(f => {
-    f.production = 1;
+    f.production = 0;
   });
+
+  const result = (await glpk.solve({
+    name: 'LP',
+    objective: {
+      direction: glpk.GLP_MIN,
+      name: "cost",
+      vars: [
+        ...factories.map((f, factory_id) => ({ name: `production_${factory_id}`, coef: f.recipe.cost })),
+        ...edges.flatMap((e, edge_id) => e.traffic.map(([_, item]) => {
+          return { name: `transport_${edge_id}_${item.id}`, coef: e.dist() * item.transport_cost };
+        }))
+      ],
+    },
+    subjectTo: [
+      {
+        name: 'final',
+        vars: [
+          { name: 'production_0', coef: 1 }
+        ],
+        bnds: { type: glpk.GLP_FX, ub: 1, lb: 1 }
+      },
+      ...factories.flatMap((f, factory_id) => {
+        return f.recipe.inputs.map(([amount, item], _) => {
+          let asdf: { name: string, coef: number }[] = [];
+          edges.forEach((e, edge_id) => {
+            if (e.target === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
+            }
+          });
+
+          return {
+            name: `balancein_${factory_id}_${item.id}`,
+            vars: [{ name: `production_${factory_id}`, coef: -amount },
+            ...asdf],
+            bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
+          }
+        })
+      }),
+      ...factories.flatMap((f, factory_id) => {
+        return f.recipe.outputs.map(([amount, item], _) => {
+          let asdf: { name: string, coef: number }[] = [];
+          edges.forEach((e, edge_id) => {
+            if (e.source === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
+            }
+          });
+
+          return {
+            name: `balanceout_${factory_id}_${item.id}`,
+            vars: [{ name: `production_${factory_id}`, coef: -amount },
+            ...asdf],
+            bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
+          }
+        })
+      }),
+    ],
+  })).result;
+
+  if (result.status !== 5) {
+    master_cost = Infinity;
+    allZero();
+  } else {
+    master_cost = result.z;
+    Object.entries(result.vars).forEach(([name, value]) => {
+      if (name.startsWith('production')) {
+        const factory_id = Number(name.split('_')[1]);
+        factories[factory_id].production = value;
+      } else if (name.startsWith('transport')) {
+        const [_, edge_id, item_id] = name.split('_');
+        const edge = edges[Number(edge_id)];
+        const traffic_index = edge.traffic.findIndex(([_, item]) => item.id === Number(item_id));
+        edge.traffic[traffic_index][0] = value;
+      } else {
+        throw new Error();
+      }
+    });
+  }
 }
 
 // an object at [camera.center] will be drawn on the center of the screen
@@ -237,6 +276,7 @@ function every_frame(cur_timestamp: number) {
   const rect = canvas.getBoundingClientRect();
   const cur_mouse_pos = new Vec2(input.mouse.clientX - rect.left, input.mouse.clientY - rect.top).sub(camera.center).sub(new Vec2(canvas.width / 2, canvas.height / 2));
   const delta_mouse = new Vec2(input.mouse.clientX - input.mouse.prev_clientX, input.mouse.clientY - input.mouse.prev_clientY);
+  let needs_recalc = false;
 
   const factory_under_mouse = factories.find(f => f.pos.sub(cur_mouse_pos).magSq() < CONFIG.factory_size * CONFIG.factory_size);
   switch (interaction_state.tag) {
@@ -265,6 +305,7 @@ function every_frame(cur_timestamp: number) {
       break;
     case 'moving_factory':
       interaction_state.factory.pos = interaction_state.factory.pos.add(delta_mouse);
+      needs_recalc = true;
       if (input.mouse.wasReleased(MouseButton.Left)) {
         interaction_state = { tag: 'none' };
       }
@@ -287,6 +328,7 @@ function every_frame(cur_timestamp: number) {
       if (input.mouse.wasReleased(MouseButton.Right)) {
         if (interaction_state.target !== null) {
           edges.push(new Edge(interaction_state.source, interaction_state.target));
+          needs_recalc = true;
         }
         interaction_state = { tag: 'none' };
       }
@@ -400,9 +442,11 @@ function every_frame(cur_timestamp: number) {
   }
 
   ctx.textAlign = 'left';
-  recalEdgeWeightsAndFactoryProductions();
-  fillText(`Cost of producing one score unit: ${computeScore()}`, master_factory.pos.addX(CONFIG.factory_size * 1.25));
-  fillText(`other Cost of producing one score unit: ${costOfOutput(master_factory)}`, master_factory.pos.addX(CONFIG.factory_size * 1.25).addY(CONFIG.label_spacing));
+  fillText(`Cost: ${master_cost}`, master_factory.pos.addX(CONFIG.factory_size * 1.25));
+
+  if (needs_recalc) {
+    recalEdgeWeightsAndFactoryProductions();
+  }
 
   animation_id = requestAnimationFrame(every_frame);
 }
@@ -449,7 +493,6 @@ if (import.meta.hot) {
     user_recipes = import.meta.hot.data.user_recipes;
     fixed_recipes = import.meta.hot.data.fixed_recipes;
     items = import.meta.hot.data.items;
-    master_item = items[0];
   }
 
   import.meta.hot.accept();
