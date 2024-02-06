@@ -16,11 +16,100 @@ const ctx = canvas.getContext("2d")!;
 const CONFIG = {
   factory_size: 20,
   label_spacing: 40,
+  ruleset: "POTATO",
 };
+
+type Ruleset = {
+  items: [string, number][];
+  fixed_recipes: [string, string][];
+  user_recipes: [string, string][];
+  fixed_factories: [number, Vec2][];
+};
+
+const rulesets: Record<string, Ruleset> = {
+  POTATO: {
+    items: [
+      ['⭐', 10],
+      ['💧', .1],
+      ['🥔', 1],
+      ['🍜', 2],
+      ['🧪', .1],
+      ['🚂🧪', .1],
+    ],
+    fixed_recipes: [
+      ['⭐', ''],
+      ['', '💧'],
+      ['', '🥔'],
+    ],
+    user_recipes: [
+      ['🍜', '⭐'],
+      ['🥔,💧', '🍜'],
+      ['🥔', '🧪'],
+      ['🧪,💧,💧', '🍜'],
+      ['🧪,🧪,🧪,🧪,🧪', '🚂🧪'],
+      ['🚂🧪', '🧪,🧪,🧪,🧪,🧪'],
+    ],
+    fixed_factories: [
+      [0, new Vec2(300, 0)],
+      [1, new Vec2(-500, -100)],
+      [2, new Vec2(-500, 100)],
+    ]
+  },
+  FACTORIO_RED_GREEN: {
+    // factorio gears are interesting because many recipes use gears & iron plates,
+    // so even if it's cheaper to move gears than iron, it might not be cheaper to move gears & iron
+    items: ([
+      // name, factorio stack size
+      ['🔴', 200], // red science
+      ['🟢', 200], // green science
+
+      ['🧱', 100], // copper plate
+      ['⛏️🧱', 50], // copper ore
+
+      ['🔩', 100], // iron plate
+      ['⛏️🔩', 50], // iron ore
+
+      ['⚙️', 100], // iron gear
+      ['🔌', 200], // copper cable
+      ['💾', 200], // green circuit
+      ['🛴', 100], // transport belt
+      ['🦾', 50], // inserter
+    ] as [string, number][]).map(([str, stack]) => [str, 100 / stack]),
+
+    fixed_recipes: [
+      ['🔴,🟢', ''],
+      ['', '⛏️🔩'],
+      ['', '⛏️🧱'],
+    ],
+
+    user_recipes: [
+      ['⛏️🔩', '🔩'],
+      ['⛏️🧱', '🧱'],
+      ['🔩,🔩', '⚙️'],
+      ['🧱', '🔌,🔌'],
+      ['🔌,🔌,🔌,🔩', '💾'],
+      ['⚙️,🔩', '🛴,🛴'],
+      ['🔌,⚙️,🔩', '🦾'],
+
+      ['🧱,⚙️', '🔴'],
+      ['🛴,🦾', '🟢'],
+    ],
+    fixed_factories: [
+      [0, new Vec2(0, 0)],
+      [1, new Vec2(-500, -300)],
+      [2, new Vec2(-500, 300)],
+      [1, new Vec2(1500, -1000)],
+      [2, new Vec2(1500, 1000)],
+    ]
+  }
+}
 
 const gui = new GUI();
 gui.add(CONFIG, "factory_size", 10, 50);
 gui.add(CONFIG, "label_spacing", 10, 50);
+gui.add(CONFIG, 'ruleset', Object.keys(rulesets)).onChange((name: string) => {
+  setRuleset(rulesets[name]);
+});
 
 // current design:
 // no throughput, no delays, 
@@ -53,10 +142,6 @@ class Recipe {
   static build(cost: number, inputs_str: string, outputs_str: string): Recipe {
     let input_counts = new DefaultMap<string, number>(_ => 0);
     let output_counts = new DefaultMap<string, number>(_ => 0);
-    // [...inputs_str].forEach(name => input_counts.set(name, input_counts.get(name) + 1));
-    // [...outputs_str].forEach(name => output_counts.set(name, output_counts.get(name) + 1));
-    console.log(inputs_str, inputs_str.split(','))
-    console.log(outputs_str, outputs_str.split(','))
     if (inputs_str != '') inputs_str.split(',').forEach(name => input_counts.set(name, input_counts.get(name) + 1));
     if (outputs_str != '') outputs_str.split(',').forEach(name => output_counts.set(name, output_counts.get(name) + 1));
 
@@ -97,94 +182,23 @@ class Edge {
   }
 }
 
-/*
-// MASHED POTATO
-let items = [
-  new ItemKind('⭐', 10, 0),
-  new ItemKind('💧', .1, 1),
-  new ItemKind('🥔', 1, 2),
-  new ItemKind('🍜', 2, 3),
-  new ItemKind('🧪', .1, 4),
-  new ItemKind('🚂🧪', .1, 5),
-];
+let items: ItemKind[];
+let user_recipes: Recipe[];
+let factories: Factory[];
+let edges: Edge[];
+let master_factory: Factory;
 
+function setRuleset(ruleset: Ruleset): void {
+  items = ruleset.items.map(([name, cost], k) => new ItemKind(name, cost, k));
+  let fixed_recipes = ruleset.fixed_recipes.map(([in_str, out_str]) => Recipe.build(100, in_str, out_str));
+  user_recipes = ruleset.user_recipes.map(([in_str, out_str]) => Recipe.build(100, in_str, out_str));
+  factories = ruleset.fixed_factories.map(([recipe_index, pos]) => new Factory(pos, fixed_recipes[recipe_index], true));
+  edges = [];
+  master_factory = factories[0];
+}
 
-let fixed_recipes = [
-  Recipe.build(100, '⭐', ''),
-  Recipe.build(100, '', '💧'),
-  Recipe.build(100, '', '🥔'),
-];
+setRuleset(rulesets[CONFIG.ruleset]);
 
-let user_recipes = [
-  Recipe.build(100, '🍜', '⭐'),
-  Recipe.build(100, '🥔,💧', '🍜'),
-  Recipe.build(100, '🥔', '🧪'),
-  Recipe.build(100, '🧪,💧,💧', '🍜'),
-  Recipe.build(100, '🧪,🧪,🧪,🧪,🧪', '🚂🧪'),
-  Recipe.build(100, '🚂🧪', '🧪,🧪,🧪,🧪,🧪'),
-];
-
-let factories: Factory[] = [
-  new Factory(new Vec2(300, 0), fixed_recipes[0], true),
-  new Factory(new Vec2(-500, -100), fixed_recipes[1], true),
-  new Factory(new Vec2(-500, 100), fixed_recipes[2], true),
-];
-*/
-
-// RED & GREEN SCIENCE
-let items = ([
-  // name, factorio stack size
-  ['🔴', 200], // red science
-  ['🟢', 200], // green science
-
-  ['🧱', 100], // copper plate
-  ['⛏️🧱', 50], // copper ore
-
-  ['🔩', 100], // iron plate
-  ['⛏️🔩', 50], // iron ore
-
-  ['⚙️', 100], // iron gear
-  ['🔌', 200], // copper cable
-  ['💾', 200], // green circuit
-  ['🛴', 100], // transport belt
-  ['🦾', 50], // inserter
-  
-
-] as [string, number][]).map(([str, stack], k) => new ItemKind(str, 100 / stack, k));
-
-// factorio gears are interesting because many recipes use gears & iron plates,
-// so even if it's cheaper to move gears than iron, it might not be cheaper to move gears & iron
-
-let fixed_recipes = [
-  Recipe.build(100, '🔴,🟢', ''),
-  Recipe.build(100, '', '⛏️🔩'),
-  Recipe.build(100, '', '⛏️🧱'),
-];
-
-let user_recipes = [
-  Recipe.build(100, '⛏️🔩', '🔩'),
-  Recipe.build(100, '⛏️🧱', '🧱'),
-  Recipe.build(100, '🔩,🔩', '⚙️'),
-  Recipe.build(100, '🧱', '🔌,🔌'),
-  Recipe.build(100, '🔌,🔌,🔌,🔩', '💾'),
-  Recipe.build(100, '⚙️,🔩', '🛴,🛴'),
-  Recipe.build(100, '🔌,⚙️,🔩', '🦾'),
-
-  Recipe.build(100, '🧱,⚙️', '🔴'),
-  Recipe.build(100, '🛴,🦾', '🟢'),
-];
-
-let factories: Factory[] = [
-  new Factory(new Vec2(0, 0), fixed_recipes[0], true),
-  new Factory(new Vec2(-500, -300), fixed_recipes[1], true),
-  new Factory(new Vec2(-500, 300), fixed_recipes[2], true),
-  new Factory(new Vec2(1500, -1000), fixed_recipes[1], true),
-  new Factory(new Vec2(1500, 1000), fixed_recipes[2], true),
-];
-
-let edges: Edge[] = [];
-
-let master_factory = factories[0];
 let master_cost = Infinity;
 async function recalEdgeWeightsAndFactoryProductions() {
 
