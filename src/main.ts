@@ -100,6 +100,7 @@ const rulesets: Record<string, Ruleset> = {
 
 const CONFIG = {
   factory_size: 20,
+  breathing_space_multiplier: 1,
   label_spacing: 40,
   auto_edges: false,
   ruleset: "POTATO",
@@ -107,6 +108,7 @@ const CONFIG = {
 
 const gui = new GUI();
 gui.add(CONFIG, "factory_size", 10, 50);
+gui.add(CONFIG, "breathing_space_multiplier", 0, 5);
 gui.add(CONFIG, "label_spacing", 10, 50);
 gui.add(CONFIG, 'auto_edges');
 gui.add(CONFIG, 'ruleset', Object.keys(rulesets)).onChange((name: string) => {
@@ -390,8 +392,12 @@ function every_frame(cur_timestamp: number) {
       }
       break;
     case 'moving_factory':
-      interaction_state.factory.pos = interaction_state.factory.pos.add(delta_mouse);
-      needs_recalc = true;
+      let new_pos = interaction_state.factory.pos.add(delta_mouse);
+      if (isValidPos(new_pos, interaction_state.factory)) {
+        interaction_state.factory.pos = interaction_state.factory.pos.add(delta_mouse);
+        needs_recalc = true;
+      }
+      // new_pos = findValidPosClosestTo(new_pos, interaction_state.factory);
       if (input.mouse.wasReleased(MouseButton.Left)) {
         interaction_state = { tag: 'none' };
       }
@@ -458,7 +464,7 @@ function every_frame(cur_timestamp: number) {
 
   // draw
 
-  if (!CONFIG.auto_edges) {
+  if (false && !CONFIG.auto_edges) {
     ctx.strokeStyle = 'black';
     ctx.beginPath();
     edges.forEach((edge) => {
@@ -603,6 +609,12 @@ function fillText(text: string, pos: Vec2) {
 
 function resourcesToString(resources: [number, ItemKind][]): string {
   return resources.map(([count, item]) => item.name.repeat(count)).join('');
+}
+
+function isValidPos(pos: Vec2, ignore_factory: Factory): boolean {
+  let min_dist_sq = 2 * CONFIG.factory_size * CONFIG.breathing_space_multiplier;
+  min_dist_sq *= min_dist_sq;
+  return !factories.some(f => f !== ignore_factory && f.pos.sub(pos).magSq() < min_dist_sq);
 }
 
 if (import.meta.hot) {
