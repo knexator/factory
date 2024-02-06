@@ -96,8 +96,8 @@ const rulesets: Record<string, Ruleset> = {
     ],
     fixed_factories: [
       [0, new Vec2(0, 0)],
-      [1, new Vec2(-500, -300)],
-      [2, new Vec2(-500, 300)],
+      [1, new Vec2(-1200, -300)],
+      [2, new Vec2(-1200, 300)],
       [1, new Vec2(1500, -1000)],
       [2, new Vec2(1500, 1000)],
     ]
