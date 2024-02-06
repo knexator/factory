@@ -97,6 +97,7 @@ class Edge {
   }
 }
 
+/*
 // MASHED POTATO
 let items = [
   new ItemKind('⭐', 10, 0),
@@ -128,38 +129,58 @@ let factories: Factory[] = [
   new Factory(new Vec2(-500, -100), fixed_recipes[1], true),
   new Factory(new Vec2(-500, 100), fixed_recipes[2], true),
 ];
+*/
 
+// RED & GREEN SCIENCE
+let items = ([
+  // name, factorio stack size
+  ['🔴', 200], // red science
+  ['🟢', 200], // green science
 
-// RED SCIENCE
-// let items = [
-//   new ItemKind('🔴', 100 / 200, 0),
-//   new ItemKind(' 🧡', 100 / 100, 1),
-//   new ItemKind('⛏️🧱', 1, 2),
-//   new ItemKind('🍜', 2, 3),
-//   new ItemKind('🧪', .1, 4),
-// ];
-// 🧱🔩
-// 🔌⚙️
+  ['🧱', 100], // copper plate
+  ['⛏️🧱', 50], // copper ore
 
+  ['🔩', 100], // iron plate
+  ['⛏️🔩', 50], // iron ore
 
-// let fixed_recipes = [
-//   Recipe.build(100, '⭐', ''),
-//   Recipe.build(100, '', '💧'),
-//   Recipe.build(100, '', '🥔'),
-// ];
+  ['⚙️', 100], // iron gear
+  ['🔌', 200], // copper cable
+  ['💾', 200], // green circuit
+  ['🛴', 100], // transport belt
+  ['🦾', 50], // inserter
+  
 
-// let user_recipes = [
-//   Recipe.build(100, '🥔', '🧪'),
-//   Recipe.build(100, '🥔 💧', '🍜'),
-//   Recipe.build(100, '🧪 💧 💧', '🍜'),
-//   Recipe.build(100, '🍜', '⭐'),
-// ];
+] as [string, number][]).map(([str, stack], k) => new ItemKind(str, 100 / stack, k));
 
-// let factories: Factory[] = [
-//   new Factory(new Vec2(300, 0), fixed_recipes[0], true),
-//   new Factory(new Vec2(-500, -100), fixed_recipes[1], true),
-//   new Factory(new Vec2(-500, 100), fixed_recipes[2], true),
-// ];
+// factorio gears are interesting because many recipes use gears & iron plates,
+// so even if it's cheaper to move gears than iron, it might not be cheaper to move gears & iron
+
+let fixed_recipes = [
+  Recipe.build(100, '🔴,🟢', ''),
+  Recipe.build(100, '', '⛏️🔩'),
+  Recipe.build(100, '', '⛏️🧱'),
+];
+
+let user_recipes = [
+  Recipe.build(100, '⛏️🔩', '🔩'),
+  Recipe.build(100, '⛏️🧱', '🧱'),
+  Recipe.build(100, '🔩,🔩', '⚙️'),
+  Recipe.build(100, '🧱', '🔌,🔌'),
+  Recipe.build(100, '🔌,🔌,🔌,🔩', '💾'),
+  Recipe.build(100, '⚙️,🔩', '🛴,🛴'),
+  Recipe.build(100, '🔌,⚙️,🔩', '🦾'),
+
+  Recipe.build(100, '🧱,⚙️', '🔴'),
+  Recipe.build(100, '🛴,🦾', '🟢'),
+];
+
+let factories: Factory[] = [
+  new Factory(new Vec2(0, 0), fixed_recipes[0], true),
+  new Factory(new Vec2(-500, -300), fixed_recipes[1], true),
+  new Factory(new Vec2(-500, 300), fixed_recipes[2], true),
+  new Factory(new Vec2(1500, -1000), fixed_recipes[1], true),
+  new Factory(new Vec2(1500, 1000), fixed_recipes[2], true),
+];
 
 let edges: Edge[] = [];
 
