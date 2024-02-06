@@ -53,8 +53,12 @@ class Recipe {
   static build(cost: number, inputs_str: string, outputs_str: string): Recipe {
     let input_counts = new DefaultMap<string, number>(_ => 0);
     let output_counts = new DefaultMap<string, number>(_ => 0);
-    [...inputs_str].forEach(name => input_counts.set(name, input_counts.get(name) + 1));
-    [...outputs_str].forEach(name => output_counts.set(name, output_counts.get(name) + 1));
+    // [...inputs_str].forEach(name => input_counts.set(name, input_counts.get(name) + 1));
+    // [...outputs_str].forEach(name => output_counts.set(name, output_counts.get(name) + 1));
+    console.log(inputs_str, inputs_str.split(','))
+    console.log(outputs_str, outputs_str.split(','))
+    if (inputs_str != '') inputs_str.split(',').forEach(name => input_counts.set(name, input_counts.get(name) + 1));
+    if (outputs_str != '') outputs_str.split(',').forEach(name => output_counts.set(name, output_counts.get(name) + 1));
 
     return new Recipe(
       [...input_counts.inner_map.entries()].map(([name, count]) => {
@@ -100,7 +104,7 @@ let items = [
   new ItemKind('🥔', 1, 2),
   new ItemKind('🍜', 2, 3),
   new ItemKind('🧪', .1, 4),
-  new ItemKind('🚂', .1, 5),
+  new ItemKind('🚂🧪', .1, 5),
 ];
 
 
@@ -112,11 +116,11 @@ let fixed_recipes = [
 
 let user_recipes = [
   Recipe.build(100, '🍜', '⭐'),
-  Recipe.build(100, '🥔💧', '🍜'),
+  Recipe.build(100, '🥔,💧', '🍜'),
   Recipe.build(100, '🥔', '🧪'),
-  Recipe.build(100, '🧪💧💧', '🍜'),
-  Recipe.build(100, '🧪🧪🧪🧪🧪', '🚂🧪'),
-  Recipe.build(100, '🚂🧪', '🧪🧪🧪🧪🧪'),
+  Recipe.build(100, '🧪,💧,💧', '🍜'),
+  Recipe.build(100, '🧪,🧪,🧪,🧪,🧪', '🚂🧪'),
+  Recipe.build(100, '🚂🧪', '🧪,🧪,🧪,🧪,🧪'),
 ];
 
 let factories: Factory[] = [
