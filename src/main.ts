@@ -13,12 +13,6 @@ const input = new Input();
 const canvas = document.querySelector("canvas")!;
 const ctx = canvas.getContext("2d")!;
 
-const CONFIG = {
-  factory_size: 20,
-  label_spacing: 40,
-  ruleset: "POTATO",
-};
-
 type Ruleset = {
   items: [string, number][];
   fixed_recipes: [string, string][];
@@ -104,9 +98,17 @@ const rulesets: Record<string, Ruleset> = {
   }
 }
 
+const CONFIG = {
+  factory_size: 20,
+  label_spacing: 40,
+  auto_edges: false,
+  ruleset: "POTATO",
+};
+
 const gui = new GUI();
 gui.add(CONFIG, "factory_size", 10, 50);
 gui.add(CONFIG, "label_spacing", 10, 50);
+gui.add(CONFIG, 'auto_edges');
 gui.add(CONFIG, 'ruleset', Object.keys(rulesets)).onChange((name: string) => {
   setRuleset(rulesets[name]);
 });
@@ -200,7 +202,7 @@ function setRuleset(ruleset: Ruleset): void {
 setRuleset(rulesets[CONFIG.ruleset]);
 
 let master_cost = Infinity;
-async function recalEdgeWeightsAndFactoryProductions() {
+async function recalcEdgeWeightsAndFactoryProductions() {
 
   function allZero() {
     edges.forEach(edge => {
@@ -211,13 +213,29 @@ async function recalEdgeWeightsAndFactoryProductions() {
     });
   }
 
-  edges.forEach(edge => {
-    const inputs = edge.source.recipe.outputs.map(([_, item]) => item);
-    const outputs = edge.target.recipe.inputs.map(([_, item]) => item);
-    edge.traffic = inputs.filter(value => outputs.includes(value)).map(value => {
-      return [0, value];
+  if (CONFIG.auto_edges) {
+    edges = [];
+    factories.forEach(source => {
+      const inbounds = source.recipe.outputs.map(([_, item]) => item);
+      factories.forEach(target => {
+        const outbounds = target.recipe.inputs.map(([_, item]) => item);
+        const traffic = inbounds.filter(value => outbounds.includes(value)).map(value => {
+          return [0, value];
+        }) as [number, ItemKind][];
+        if (traffic.length > 0) {
+          edges.push(new Edge(source, target, traffic));
+        }
+      });
     });
-  });
+  } else {
+    edges.forEach(edge => {
+      const inputs = edge.source.recipe.outputs.map(([_, item]) => item);
+      const outputs = edge.target.recipe.inputs.map(([_, item]) => item);
+      edge.traffic = inputs.filter(value => outputs.includes(value)).map(value => {
+        return [0, value];
+      });
+    });
+  }
   factories.forEach(f => {
     f.production = 0;
   });
@@ -429,6 +447,7 @@ function every_frame(cur_timestamp: number) {
       if (input.mouse.wasReleased(MouseButton.Right)) {
         if (interaction_state.recipe !== null) {
           factories.push(new Factory(interaction_state.pos, interaction_state.recipe, false));
+          needs_recalc = true;
         }
         interaction_state = { tag: 'none' };
       }
@@ -438,6 +457,29 @@ function every_frame(cur_timestamp: number) {
   }
 
   // draw
+
+  if (!CONFIG.auto_edges) {
+    ctx.strokeStyle = 'black';
+    ctx.beginPath();
+    edges.forEach((edge) => {
+      moveTo(edge.source.pos);
+      lineTo(edge.target.pos);
+    });
+    ctx.stroke();
+  } else {
+    edges.forEach((edge) => {
+      if (edge.traffic.some(([amount, _]) => amount > 0)) {
+        ctx.strokeStyle = 'black';
+      } else {
+        ctx.strokeStyle = '#686868';
+      }
+      ctx.beginPath();
+      moveTo(edge.source.pos);
+      lineTo(edge.target.pos);
+      ctx.stroke();
+    });
+    ctx.strokeStyle = 'black';
+  }
 
   ctx.beginPath();
   factories.forEach(fac => {
@@ -462,13 +504,6 @@ function every_frame(cur_timestamp: number) {
     ctx.textAlign = 'left';
     fillText(out_str, fac.pos.addX(CONFIG.factory_size * 1.25));
   })
-
-  ctx.beginPath();
-  edges.forEach(({ source, target }) => {
-    moveTo(source.pos);
-    lineTo(target.pos);
-  });
-  ctx.stroke();
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -513,7 +548,7 @@ function every_frame(cur_timestamp: number) {
   fillText(`Cost: ${master_cost}`, master_factory.pos.addX(CONFIG.factory_size * 1.25));
 
   if (needs_recalc) {
-    recalEdgeWeightsAndFactoryProductions();
+    recalcEdgeWeightsAndFactoryProductions();
   }
 
   // debug
