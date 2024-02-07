@@ -223,6 +223,7 @@ async function recalcEdgeWeightsAndFactoryProductions() {
     factories.forEach(source => {
       const inbounds = source.recipe === 'any2any' ? items : source.recipe.outputs.map(([_, item]) => item);
       factories.forEach(target => {
+        if (source === target) return;
         const outbounds = target.recipe === 'any2any' ? items : target.recipe.inputs.map(([_, item]) => item);
         const traffic = inbounds.filter(value => outbounds.includes(value)).map(value => {
           return [0, value];
