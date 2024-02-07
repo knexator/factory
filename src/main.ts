@@ -2,8 +2,8 @@ import * as twgl from "twgl.js"
 import GUI from "lil-gui";
 import { Grid2D } from "./kommon/grid2D";
 import { Input, KeyCode, Mouse, MouseButton } from "./kommon/input";
-import { DefaultMap, deepcopy, fromCount, objectMap, zip2 } from "./kommon/kommon";
-import { mod, towards as approach, lerp, inRange, clamp, argmax, argmin, max, remap, clamp01 } from "./kommon/math";
+import { DefaultMap, deepcopy, fromCount, fromRange, objectMap, zip2 } from "./kommon/kommon";
+import { mod, towards as approach, lerp, inRange, clamp, argmax, argmin, max, remap, clamp01, randomInt, randomFloat, randomChoice } from "./kommon/math";
 import { canvasFromAscii } from "./kommon/spritePS";
 import { initGL2, IVec, Vec2, Color, GenericDrawer, StatefulDrawer, CircleDrawer, m3, CustomSpriteDrawer, Transform, IRect, IColor, IVec2 } from "kanvas2d"
 import GLPK from "glpk.js"
@@ -104,6 +104,8 @@ const CONFIG = {
   label_spacing: 40,
   auto_edges: false,
   ruleset: "POTATO",
+  randomize_start: () => randomizeMap(true),
+  randomize_game: () => randomizeMap(false),
 };
 
 const gui = new GUI();
@@ -114,6 +116,8 @@ gui.add(CONFIG, 'auto_edges');
 gui.add(CONFIG, 'ruleset', Object.keys(rulesets)).onChange((name: string) => {
   setRuleset(rulesets[name]);
 });
+gui.add(CONFIG, 'randomize_start');
+gui.add(CONFIG, 'randomize_game');
 
 // current design:
 // no throughput, no delays, 
@@ -187,6 +191,7 @@ class Edge {
 }
 
 let items: ItemKind[];
+let fixed_recipes: Recipe[];
 let user_recipes: Recipe[];
 let factories: Factory[];
 let edges: Edge[];
@@ -194,7 +199,7 @@ let master_factory: Factory;
 
 function setRuleset(ruleset: Ruleset): void {
   items = ruleset.items.map(([name, cost], k) => new ItemKind(name, cost, k));
-  let fixed_recipes = ruleset.fixed_recipes.map(([in_str, out_str]) => Recipe.build(100, in_str, out_str));
+  fixed_recipes = ruleset.fixed_recipes.map(([in_str, out_str]) => Recipe.build(100, in_str, out_str));
   user_recipes = ruleset.user_recipes.map(([in_str, out_str]) => Recipe.build(100, in_str, out_str));
   factories = ruleset.fixed_factories.map(([recipe_index, pos]) => new Factory(pos, fixed_recipes[recipe_index], true));
   edges = [];
@@ -202,6 +207,24 @@ function setRuleset(ruleset: Ruleset): void {
 }
 
 setRuleset(rulesets[CONFIG.ruleset]);
+
+function randomizeMap(only_fixed: boolean): void {
+  factories = [new Factory(Vec2.zero, fixed_recipes[0], true)];
+  if (only_fixed) {
+    fromCount(3 * fixed_recipes.length, _ => {
+      factories.push(new Factory( Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), fixed_recipes[randomInt(1, fixed_recipes.length)], true));
+    });
+  } else {
+    fromCount(3 * fixed_recipes.length, _ => {
+      factories.push(new Factory( Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), fixed_recipes[randomInt(1, fixed_recipes.length)], true));
+    });
+    fromCount(3 * user_recipes.length, _ => {
+      factories.push(new Factory( Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), randomChoice(user_recipes), false));
+    });
+  }
+  edges = [];
+  master_factory = factories[0];
+}
 
 let master_cost = Infinity;
 async function recalcEdgeWeightsAndFactoryProductions() {
@@ -623,6 +646,7 @@ if (import.meta.hot) {
     master_factory = factories[0];
     edges = import.meta.hot.data.edges;
     user_recipes = import.meta.hot.data.user_recipes;
+    fixed_recipes = import.meta.hot.data.fixed_recipes;
     items = import.meta.hot.data.items;
   }
 
@@ -636,6 +660,7 @@ if (import.meta.hot) {
     data.factories = factories;
     data.edges = edges;
     data.user_recipes = user_recipes;
+    data.fixed_recipes = fixed_recipes;
     data.items = items;
   })
 }
