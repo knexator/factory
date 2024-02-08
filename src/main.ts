@@ -104,6 +104,7 @@ const CONFIG = {
   label_spacing: 40,
   auto_edges: false,
   editor_mode: true,
+  limit_intermediates: true,
   ruleset: "POTATO",
   randomize_start: () => randomizeMap(true),
   randomize_game: () => randomizeMap(false),
@@ -115,6 +116,7 @@ gui.add(CONFIG, "breathing_space_multiplier", 0, 5);
 gui.add(CONFIG, "label_spacing", 10, 50);
 gui.add(CONFIG, 'auto_edges');
 gui.add(CONFIG, 'editor_mode');
+gui.add(CONFIG, 'limit_intermediates');
 gui.add(CONFIG, 'ruleset', Object.keys(rulesets)).onChange((name: string) => {
   setRuleset(rulesets[name]);
 });
@@ -383,6 +385,24 @@ async function recalcMaxProfit() {
   });
 
   const target_factories_id = factories.map((f, k) => f.recipe === fixed_recipes[0] ? k : null).filter(x => x !== null) as number[];
+  const source_factories_id = factories.map((f, k) => (f.recipe !== fixed_recipes[0] && fixed_recipes.includes(f.recipe)) ? k : null).filter(x => x !== null) as number[];
+
+  const production_limits = CONFIG.limit_intermediates ? factories.map((f, factory_index) => ({
+    name: `maxconsumption_${factory_index}`,
+    vars: [{ name: `production_${factory_index}`, coef: 1 }],
+    bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 },
+  })) : [
+    ...target_factories_id.map(k => ({
+      name: `maxconsumption_${k}`,
+      vars: [{ name: `production_${k}`, coef: 1 }],
+      bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 },
+    })),
+    ...source_factories_id.map(k => ({
+      name: `maxproduction_${k}`,
+      vars: [{ name: `production_${k}`, coef: 1 }],
+      bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 },
+    })),
+  ];
 
   const result = (await glpk.solve({
     name: 'LP',
@@ -397,11 +417,7 @@ async function recalcMaxProfit() {
       ],
     },
     subjectTo: [
-      ...target_factories_id.map(k => ({
-        name: `maxconsumption_${k}`,
-        vars: [{ name: `production_${k}`, coef: 1 }],
-        bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 },
-      })),
+      ...production_limits,
       ...factories.flatMap((f, factory_id) => {
         return f.recipe.inputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
@@ -503,7 +519,7 @@ function every_frame(cur_timestamp: number) {
   }
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  fillText(`Cost: ${master_cost}`, Vec2.zero);
+  fillText(`Profit: ${master_cost}`, Vec2.zero);
   ctx.translate(camera.center.x + canvas.width / 2, camera.center.y + canvas.height / 2);
   ctx.textBaseline = 'middle';
 
