@@ -100,9 +100,10 @@ const rulesets: Record<string, Ruleset> = {
 
 const CONFIG = {
   factory_size: 20,
-  breathing_space_multiplier: 1,
+  breathing_space_multiplier: 0,
   label_spacing: 40,
   auto_edges: false,
+  editor_mode: true,
   ruleset: "POTATO",
   randomize_start: () => randomizeMap(true),
   randomize_game: () => randomizeMap(false),
@@ -113,6 +114,7 @@ gui.add(CONFIG, "factory_size", 10, 50);
 gui.add(CONFIG, "breathing_space_multiplier", 0, 5);
 gui.add(CONFIG, "label_spacing", 10, 50);
 gui.add(CONFIG, 'auto_edges');
+gui.add(CONFIG, 'editor_mode');
 gui.add(CONFIG, 'ruleset', Object.keys(rulesets)).onChange((name: string) => {
   setRuleset(rulesets[name]);
 });
@@ -195,7 +197,6 @@ let fixed_recipes: Recipe[];
 let user_recipes: Recipe[];
 let factories: Factory[];
 let edges: Edge[];
-let master_factory: Factory;
 
 function setRuleset(ruleset: Ruleset): void {
   items = ruleset.items.map(([name, cost], k) => new ItemKind(name, cost, k));
@@ -203,7 +204,6 @@ function setRuleset(ruleset: Ruleset): void {
   user_recipes = ruleset.user_recipes.map(([in_str, out_str]) => Recipe.build(100, in_str, out_str));
   factories = ruleset.fixed_factories.map(([recipe_index, pos]) => new Factory(pos, fixed_recipes[recipe_index], true));
   edges = [];
-  master_factory = factories[0];
 }
 
 setRuleset(rulesets[CONFIG.ruleset]);
@@ -212,23 +212,25 @@ function randomizeMap(only_fixed: boolean): void {
   factories = [new Factory(Vec2.zero, fixed_recipes[0], true)];
   if (only_fixed) {
     fromCount(3 * fixed_recipes.length, _ => {
-      factories.push(new Factory( Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), fixed_recipes[randomInt(1, fixed_recipes.length)], true));
+      factories.push(new Factory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), fixed_recipes[randomInt(1, fixed_recipes.length)], true));
     });
   } else {
     fromCount(3 * fixed_recipes.length, _ => {
-      factories.push(new Factory( Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), fixed_recipes[randomInt(1, fixed_recipes.length)], true));
+      factories.push(new Factory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), fixed_recipes[randomInt(1, fixed_recipes.length)], true));
     });
     fromCount(3 * user_recipes.length, _ => {
-      factories.push(new Factory( Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), randomChoice(user_recipes), false));
+      factories.push(new Factory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), randomChoice(user_recipes), false));
     });
   }
   edges = [];
-  master_factory = factories[0];
 }
 
 let master_cost = Infinity;
 async function recalcEdgeWeightsAndFactoryProductions() {
+  await recalcMaxProfit();
+}
 
+async function recalcCheapest() {
   function allZero() {
     edges.forEach(edge => {
       edge.traffic = [];
@@ -343,6 +345,124 @@ async function recalcEdgeWeightsAndFactoryProductions() {
   }
 }
 
+async function recalcMaxProfit() {
+  function allZero() {
+    edges.forEach(edge => {
+      edge.traffic = [];
+    });
+    factories.forEach(f => {
+      f.production = 0;
+    });
+  }
+
+  if (CONFIG.auto_edges) {
+    edges = [];
+    factories.forEach(source => {
+      const inbounds = source.recipe.outputs.map(([_, item]) => item);
+      factories.forEach(target => {
+        const outbounds = target.recipe.inputs.map(([_, item]) => item);
+        const traffic = inbounds.filter(value => outbounds.includes(value)).map(value => {
+          return [0, value];
+        }) as [number, ItemKind][];
+        if (traffic.length > 0) {
+          edges.push(new Edge(source, target, traffic));
+        }
+      });
+    });
+  } else {
+    edges.forEach(edge => {
+      const inputs = edge.source.recipe.outputs.map(([_, item]) => item);
+      const outputs = edge.target.recipe.inputs.map(([_, item]) => item);
+      edge.traffic = inputs.filter(value => outputs.includes(value)).map(value => {
+        return [0, value];
+      });
+    });
+  }
+  factories.forEach(f => {
+    f.production = 0;
+  });
+
+  const target_factories_id = factories.map((f, k) => f.recipe === fixed_recipes[0] ? k : null).filter(x => x !== null) as number[];
+
+  const result = (await glpk.solve({
+    name: 'LP',
+    objective: {
+      direction: glpk.GLP_MAX,
+      name: "profit",
+      vars: [
+        ...factories.map((f, factory_id) => ({ name: `production_${factory_id}`, coef: f.recipe === fixed_recipes[0] ? 10_000 : -f.recipe.cost })),
+        ...edges.flatMap((e, edge_id) => e.traffic.map(([_, item]) => {
+          return { name: `transport_${edge_id}_${item.id}`, coef: -e.dist() * item.transport_cost };
+        }))
+      ],
+    },
+    subjectTo: [
+      ...target_factories_id.map(k => ({
+        name: `maxconsumption_${k}`,
+        vars: [{ name: `production_${k}`, coef: 1 }],
+        bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 },
+      })),
+      ...factories.flatMap((f, factory_id) => {
+        return f.recipe.inputs.map(([amount, item], _) => {
+          let asdf: { name: string, coef: number }[] = [];
+          edges.forEach((e, edge_id) => {
+            if (e.target === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
+            }
+          });
+
+          return {
+            name: `balancein_${factory_id}_${item.id}`,
+            vars: [{ name: `production_${factory_id}`, coef: -amount },
+            ...asdf],
+            bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
+          }
+        })
+      }),
+      ...factories.flatMap((f, factory_id) => {
+        return f.recipe.outputs.map(([amount, item], _) => {
+          let asdf: { name: string, coef: number }[] = [];
+          edges.forEach((e, edge_id) => {
+            if (e.source === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
+            }
+          });
+
+          return {
+            name: `balanceout_${factory_id}_${item.id}`,
+            vars: [{ name: `production_${factory_id}`, coef: -amount },
+            ...asdf],
+            bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
+          }
+        })
+      }),
+
+    ],
+  })).result;
+  console.log(result);
+
+  if (result.status !== glpk.GLP_FEAS && result.status !== glpk.GLP_OPT) {
+    master_cost = Infinity;
+    allZero();
+  } else {
+    master_cost = result.z;
+    Object.entries(result.vars).forEach(([name, value]) => {
+      if (name.startsWith('production')) {
+        const factory_id = Number(name.split('_')[1]);
+        factories[factory_id].production = value;
+      } else if (name.startsWith('transport')) {
+        const [_, edge_id, item_id] = name.split('_');
+        const edge = edges[Number(edge_id)];
+        const traffic_index = edge.traffic.findIndex(([_, item]) => item.id === Number(item_id));
+        edge.traffic[traffic_index][0] = value;
+      } else {
+        throw new Error();
+      }
+    });
+  }
+}
+
+
 // an object at [camera.center] will be drawn on the center of the screen
 let camera = { center: Vec2.zero };
 
@@ -381,7 +501,11 @@ function every_frame(cur_timestamp: number) {
   if (twgl.resizeCanvasToDisplaySize(canvas)) {
     // resizing stuff
   }
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  fillText(`Cost: ${master_cost}`, Vec2.zero);
   ctx.translate(camera.center.x + canvas.width / 2, camera.center.y + canvas.height / 2);
+  ctx.textBaseline = 'middle';
 
   // logic
   const rect = canvas.getBoundingClientRect();
@@ -450,7 +574,7 @@ function every_frame(cur_timestamp: number) {
       break;
     case "making_factory":
       interaction_state.recipe = null;
-      Object.entries(user_recipes).forEach(([name, recipe], k) => {
+      Object.entries(CONFIG.editor_mode ? [...fixed_recipes, ...user_recipes] : user_recipes).forEach(([name, recipe], k) => {
         if (interaction_state.tag !== 'making_factory') throw new Error();
         const selected = inRange((cur_mouse_pos.y - interaction_state.pos.y) / CONFIG.label_spacing, k - .5, k + .5);
         {
@@ -573,8 +697,7 @@ function every_frame(cur_timestamp: number) {
     ctx.stroke();
   }
 
-  ctx.textAlign = 'left';
-  fillText(`Cost: ${master_cost}`, master_factory.pos.addX(CONFIG.factory_size * 1.25));
+  // fillText(`Cost: ${master_cost}`, master_factory.pos.addX(CONFIG.factory_size * 1.25));
 
   if (needs_recalc) {
     recalcEdgeWeightsAndFactoryProductions();
@@ -643,7 +766,6 @@ function isValidPos(pos: Vec2, ignore_factory: Factory): boolean {
 if (import.meta.hot) {
   if (import.meta.hot.data.edges) {
     factories = import.meta.hot.data.factories;
-    master_factory = factories[0];
     edges = import.meta.hot.data.edges;
     user_recipes = import.meta.hot.data.user_recipes;
     fixed_recipes = import.meta.hot.data.fixed_recipes;
