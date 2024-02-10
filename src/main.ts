@@ -14,7 +14,7 @@ const canvas_ctx = document.querySelector<HTMLCanvasElement>("#ctx_canvas")!;
 const ctx = canvas_ctx.getContext("2d")!;
 const canvas_gl = document.querySelector<HTMLCanvasElement>("#gl_canvas")!;
 const gl = initGL2(canvas_gl)!;
-gl.clearColor(.5,.5,.5,1);
+gl.clearColor(.5, .5, .5, 1);
 
 type Ruleset = {
   items: [string, number][];
@@ -60,6 +60,8 @@ const rulesets: Record<string, Ruleset> = {
       ['🔴', 200], // red science
       ['🟢', 200], // green science
 
+      ['🔥', 50], // coal
+
       ['🧱', 100], // copper plate
       ['⛏️🧱', 50], // copper ore
 
@@ -78,10 +80,11 @@ const rulesets: Record<string, Ruleset> = {
       ['🟢', ''],
       ['', '⛏️🔩'],
       ['', '⛏️🧱'],
+      ['', '🔥'],
     ],
     user_recipes: [
-      ['⛏️🔩', '🔩'],
-      ['⛏️🧱', '🧱'],
+      ['🔥,⛏️🔩', '🔩'],
+      ['🔥,⛏️🧱', '🧱'],
       ['🔩,🔩', '⚙️'],
       ['🧱', '🔌,🔌'],
       ['🔌,🔌,🔌,🔩', '💾'],
@@ -92,12 +95,13 @@ const rulesets: Record<string, Ruleset> = {
       ['🛴,🦾', '🟢'],
     ],
     fixed_factories: [
-      [0, new Vec2(0, 0)],
-      [1, new Vec2(0, 100)],
+      ...fromCount(5, k => [0, new Vec2(k * 100, -50)]) as [number, Vec2][],
+      ...fromCount(5, k => [1, new Vec2(k * 100, 50)]) as [number, Vec2][],
       [2, new Vec2(-1200, -300)],
       [3, new Vec2(-1200, 300)],
-      [2, new Vec2(1500, -1000)],
-      [3, new Vec2(1500, 1000)],
+      [4, new Vec2(-1500, 0)],
+      ...fromCount(5, k => [2, new Vec2(1500, -1000).add(Vec2.fromTurns(k / 5).scale(100))]) as [number, Vec2][],
+      ...fromCount(5, k => [3, new Vec2(1500, 1000).add(Vec2.fromTurns(k / 5).scale(100))]) as [number, Vec2][],
     ]
   }
 }
@@ -577,7 +581,7 @@ function every_frame(cur_timestamp: number) {
   ctx.fillStyle = 'black';
   if (or(twgl.resizeCanvasToDisplaySize(canvas_ctx), twgl.resizeCanvasToDisplaySize(canvas_gl))) {
     // resizing stuff
-    gl.viewport(0,0,canvas_gl.width,canvas_gl.height);
+    gl.viewport(0, 0, canvas_gl.width, canvas_gl.height);
   }
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
