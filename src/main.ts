@@ -455,27 +455,21 @@ async function recalcMaxProfit() {
 
     ],
   })).result;
-  console.log(result);
 
-  if (result.status !== glpk.GLP_FEAS && result.status !== glpk.GLP_OPT) {
-    master_cost = Infinity;
-    allZero();
-  } else {
-    master_cost = result.z;
-    Object.entries(result.vars).forEach(([name, value]) => {
-      if (name.startsWith('production')) {
-        const factory_id = Number(name.split('_')[1]);
-        factories[factory_id].production = value;
-      } else if (name.startsWith('transport')) {
-        const [_, edge_id, item_id] = name.split('_');
-        const edge = edges[Number(edge_id)];
-        const traffic_index = edge.traffic.findIndex(([_, item]) => item.id === Number(item_id));
-        edge.traffic[traffic_index][0] = value;
-      } else {
-        throw new Error();
-      }
-    });
-  }
+  master_cost = result.z;
+  Object.entries(result.vars).forEach(([name, value]) => {
+    if (name.startsWith('production')) {
+      const factory_id = Number(name.split('_')[1]);
+      factories[factory_id].production = value;
+    } else if (name.startsWith('transport')) {
+      const [_, edge_id, item_id] = name.split('_');
+      const edge = edges[Number(edge_id)];
+      const traffic_index = edge.traffic.findIndex(([_, item]) => item.id === Number(item_id));
+      edge.traffic[traffic_index][0] = value;
+    } else {
+      throw new Error();
+    }
+  });
 }
 
 
