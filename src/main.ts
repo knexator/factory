@@ -71,11 +71,11 @@ const rulesets: Record<string, Ruleset> = {
     ] as [string, number][]).map(([str, stack]) => [str, 100 / stack]),
 
     fixed_recipes: [
-      ['🔴,🟢', ''],
+      ['🔴', ''],
+      ['🟢', ''],
       ['', '⛏️🔩'],
       ['', '⛏️🧱'],
     ],
-
     user_recipes: [
       ['⛏️🔩', '🔩'],
       ['⛏️🧱', '🧱'],
@@ -83,17 +83,18 @@ const rulesets: Record<string, Ruleset> = {
       ['🧱', '🔌,🔌'],
       ['🔌,🔌,🔌,🔩', '💾'],
       ['⚙️,🔩', '🛴,🛴'],
-      ['🔌,⚙️,🔩', '🦾'],
+      ['💾,⚙️,🔩', '🦾'],
 
       ['🧱,⚙️', '🔴'],
       ['🛴,🦾', '🟢'],
     ],
     fixed_factories: [
       [0, new Vec2(0, 0)],
-      [1, new Vec2(-1200, -300)],
-      [2, new Vec2(-1200, 300)],
-      [1, new Vec2(1500, -1000)],
-      [2, new Vec2(1500, 1000)],
+      [1, new Vec2(0, 100)],
+      [2, new Vec2(-1200, -300)],
+      [3, new Vec2(-1200, 300)],
+      [2, new Vec2(1500, -1000)],
+      [3, new Vec2(1500, 1000)],
     ]
   }
 }
@@ -104,7 +105,7 @@ const CONFIG = {
   label_spacing: 40,
   auto_edges: false,
   editor_mode: true,
-  limit_intermediates: true,
+  limit_intermediates: false,
   ruleset: "POTATO",
   randomize_start: () => randomizeMap(true),
   randomize_game: () => randomizeMap(false),
@@ -202,7 +203,7 @@ let edges: Edge[];
 
 function setRuleset(ruleset: Ruleset): void {
   items = ruleset.items.map(([name, cost], k) => new ItemKind(name, cost, k));
-  fixed_recipes = ruleset.fixed_recipes.map(([in_str, out_str]) => Recipe.build(100, in_str, out_str));
+  fixed_recipes = ruleset.fixed_recipes.map(([in_str, out_str]) => Recipe.build(out_str === '' ? -10_000 : 100, in_str, out_str));
   user_recipes = ruleset.user_recipes.map(([in_str, out_str]) => Recipe.build(100, in_str, out_str));
   factories = ruleset.fixed_factories.map(([recipe_index, pos]) => new Factory(pos, fixed_recipes[recipe_index], true));
   edges = [];
@@ -348,15 +349,6 @@ async function recalcCheapest() {
 }
 
 async function recalcMaxProfit() {
-  function allZero() {
-    edges.forEach(edge => {
-      edge.traffic = [];
-    });
-    factories.forEach(f => {
-      f.production = 0;
-    });
-  }
-
   if (CONFIG.auto_edges) {
     edges = [];
     factories.forEach(source => {
@@ -384,8 +376,8 @@ async function recalcMaxProfit() {
     f.production = 0;
   });
 
-  const target_factories_id = factories.map((f, k) => f.recipe === fixed_recipes[0] ? k : null).filter(x => x !== null) as number[];
-  const source_factories_id = factories.map((f, k) => (f.recipe !== fixed_recipes[0] && fixed_recipes.includes(f.recipe)) ? k : null).filter(x => x !== null) as number[];
+  const target_factories_id = factories.map((f, k) => f.recipe.outputs.length === 0 ? k : null).filter(x => x !== null) as number[];
+  const source_factories_id = factories.map((f, k) => f.recipe.inputs.length === 0 ? k : null).filter(x => x !== null) as number[];
 
   const production_limits = CONFIG.limit_intermediates ? factories.map((f, factory_index) => ({
     name: `maxconsumption_${factory_index}`,
@@ -410,7 +402,7 @@ async function recalcMaxProfit() {
       direction: glpk.GLP_MAX,
       name: "profit",
       vars: [
-        ...factories.map((f, factory_id) => ({ name: `production_${factory_id}`, coef: f.recipe === fixed_recipes[0] ? 10_000 : -f.recipe.cost })),
+        ...factories.map((f, factory_id) => ({ name: `production_${factory_id}`, coef: -f.recipe.cost })),
         ...edges.flatMap((e, edge_id) => e.traffic.map(([_, item]) => {
           return { name: `transport_${edge_id}_${item.id}`, coef: -e.dist() * item.transport_cost };
         }))
