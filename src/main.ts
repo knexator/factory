@@ -103,9 +103,9 @@ const CONFIG = {
   factory_size: 20,
   breathing_space_multiplier: 0,
   label_spacing: 40,
-  auto_edges: false,
-  editor_mode: true,
-  limit_intermediates: false,
+  auto_edges: true,
+  editor_mode: false,
+  max_production: 3,
   ruleset: "POTATO",
   randomize_start: () => randomizeMap(true),
   randomize_game: () => randomizeMap(false),
@@ -117,7 +117,7 @@ gui.add(CONFIG, "breathing_space_multiplier", 0, 5);
 gui.add(CONFIG, "label_spacing", 10, 50);
 gui.add(CONFIG, 'auto_edges');
 gui.add(CONFIG, 'editor_mode');
-gui.add(CONFIG, 'limit_intermediates');
+gui.add(CONFIG, 'max_production', 1, 10);
 gui.add(CONFIG, 'ruleset', Object.keys(rulesets)).onChange((name: string) => {
   setRuleset(rulesets[name]);
 });
@@ -177,6 +177,7 @@ class Factory {
     public pos: Vec2,
     public recipe: Recipe,
     public fixed: boolean,
+    // public max_production: number,
     // how many copies of the recipe are processed each second // not really
     public production: number = 0,
   ) { }
@@ -212,7 +213,6 @@ function setRuleset(ruleset: Ruleset): void {
 setRuleset(rulesets[CONFIG.ruleset]);
 
 function randomizeMap(only_fixed: boolean): void {
-  factories = [new Factory(Vec2.zero, fixed_recipes[0], true)];
   if (only_fixed) {
     fromCount(3 * fixed_recipes.length, _ => {
       factories.push(new Factory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), fixed_recipes[randomInt(1, fixed_recipes.length)], true));
@@ -376,25 +376,12 @@ async function recalcMaxProfit() {
     f.production = 0;
   });
 
-  const target_factories_id = factories.map((f, k) => f.recipe.outputs.length === 0 ? k : null).filter(x => x !== null) as number[];
-  const source_factories_id = factories.map((f, k) => f.recipe.inputs.length === 0 ? k : null).filter(x => x !== null) as number[];
-
-  const production_limits = CONFIG.limit_intermediates ? factories.map((f, factory_index) => ({
-    name: `maxconsumption_${factory_index}`,
+  const production_limits = factories.map((f, factory_index) => ({
+    name: `maxproduction_${factory_index}`,
     vars: [{ name: `production_${factory_index}`, coef: 1 }],
-    bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 },
-  })) : [
-    ...target_factories_id.map(k => ({
-      name: `maxconsumption_${k}`,
-      vars: [{ name: `production_${k}`, coef: 1 }],
-      bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 },
-    })),
-    ...source_factories_id.map(k => ({
-      name: `maxproduction_${k}`,
-      vars: [{ name: `production_${k}`, coef: 1 }],
-      bnds: { type: glpk.GLP_UP, ub: 1, lb: 0 },
-    })),
-  ];
+    // bnds: { type: glpk.GLP_UP, ub: f.max_production, lb: 0 },
+    bnds: { type: glpk.GLP_UP, ub: fixed_recipes.includes(f.recipe) ? 1 : CONFIG.max_production, lb: 0 },
+  }));
 
   const result = (await glpk.solve({
     name: 'LP',
