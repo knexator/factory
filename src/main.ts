@@ -5,13 +5,16 @@ import { Input, KeyCode, Mouse, MouseButton } from "./kommon/input";
 import { DefaultMap, deepcopy, fromCount, fromRange, objectMap, zip2 } from "./kommon/kommon";
 import { mod, towards as approach, lerp, inRange, clamp, argmax, argmin, max, remap, clamp01, randomInt, randomFloat, randomChoice } from "./kommon/math";
 import { canvasFromAscii } from "./kommon/spritePS";
-import { initGL2, IVec, Vec2, Color, GenericDrawer, StatefulDrawer, CircleDrawer, m3, CustomSpriteDrawer, Transform, IRect, IColor, IVec2 } from "kanvas2d"
+import { initGL2, IVec, Vec2, Color, GenericDrawer, StatefulDrawer, CircleDrawer, m3, CustomSpriteDrawer, Transform, IRect, IColor, IVec2, FullscreenShader } from "kanvas2d"
 import GLPK from "glpk.js"
 
 const glpk = await GLPK();
 const input = new Input();
-const canvas = document.querySelector("canvas")!;
-const ctx = canvas.getContext("2d")!;
+const canvas_ctx = document.querySelector<HTMLCanvasElement>("#ctx_canvas")!;
+const ctx = canvas_ctx.getContext("2d")!;
+const canvas_gl = document.querySelector<HTMLCanvasElement>("#gl_canvas")!;
+const gl = initGL2(canvas_gl)!;
+gl.clearColor(.5,.5,.5,1);
 
 type Ruleset = {
   items: [string, number][];
@@ -451,6 +454,91 @@ async function recalcMaxProfit() {
   });
 }
 
+const background_drawer = new FullscreenShader(gl, `#version 300 es
+precision mediump float;
+in vec2 v_uv;
+
+// uv (0.5, 0.5) => u_camera_pos
+// uv (0.0, 0.0) => u_camera_pos - u_camera_size / 2;
+uniform vec2 u_camera_pos;
+uniform vec2 u_camera_size;
+
+/* discontinuous pseudorandom uniformly distributed in [-0.5, +0.5]^3 */
+vec3 random3(vec3 c) {
+	float j = 4096.0*sin(dot(c,vec3(17.0, 59.4, 15.0)));
+	vec3 r;
+	r.z = fract(512.0*j);
+	j *= .125;
+	r.x = fract(512.0*j);
+	j *= .125;
+	r.y = fract(512.0*j);
+	return r-0.5;
+}
+
+/* skew constants for 3d simplex functions */
+const float F3 =  0.3333333;
+const float G3 =  0.1666667;
+
+/* 3d simplex noise, -.5 to .5 */
+float simplex3d(vec3 p) {
+	 /* 1. find current tetrahedron T and it's four vertices */
+	 /* s, s+i1, s+i2, s+1.0 - absolute skewed (integer) coordinates of T vertices */
+	 /* x, x1, x2, x3 - unskewed coordinates of p relative to each of T vertices*/
+	 
+	 /* calculate s and x */
+	 vec3 s = floor(p + dot(p, vec3(F3)));
+	 vec3 x = p - s + dot(s, vec3(G3));
+	 
+	 /* calculate i1 and i2 */
+	 vec3 e = step(vec3(0.0), x - x.yzx);
+	 vec3 i1 = e*(1.0 - e.zxy);
+	 vec3 i2 = 1.0 - e.zxy*(1.0 - e);
+	 	
+	 /* x1, x2, x3 */
+	 vec3 x1 = x - i1 + G3;
+	 vec3 x2 = x - i2 + 2.0*G3;
+	 vec3 x3 = x - 1.0 + 3.0*G3;
+	 
+	 /* 2. find four surflets and store them in d */
+	 vec4 w, d;
+	 
+	 /* calculate surflet weights */
+	 w.x = dot(x, x);
+	 w.y = dot(x1, x1);
+	 w.z = dot(x2, x2);
+	 w.w = dot(x3, x3);
+	 
+	 /* w fades from 0.6 at the center of the surflet to 0.0 at the margin */
+	 w = max(0.6 - w, 0.0);
+	 
+	 /* calculate surflet components */
+	 d.x = dot(random3(s), x);
+	 d.y = dot(random3(s + i1), x1);
+	 d.z = dot(random3(s + i2), x2);
+	 d.w = dot(random3(s + 1.0), x3);
+	 
+	 /* multiply d by w^4 */
+	 w *= w;
+	 w *= w;
+	 d *= w;
+	 
+	 /* 3. return the sum of the four surflets */
+	 return dot(d, vec4(52.0)) * .75;
+}
+
+vec2 pong(vec2 value, float pong_value) {
+    vec2 v = mod(value, pong_value * 2.0);
+    return min(v, pong_value * 2.0 - v);
+}
+
+out vec4 out_color;
+void main() {
+  vec2 world_pos = ((v_uv - .5) * u_camera_size * vec2(-1,1)) + u_camera_pos;
+  float noise = simplex3d(vec3(world_pos / 3000., .0));
+  noise = floor(noise * 5.) / 5.;
+  out_color = vec4(vec3(.5 + .1 * noise), 1.0);
+}
+`);
 
 // an object at [camera.center] will be drawn on the center of the screen
 let camera = { center: Vec2.zero };
@@ -483,22 +571,28 @@ function every_frame(cur_timestamp: number) {
   ctx.resetTransform();
   ctx.font = "20px Arial";
   ctx.textBaseline = "middle"
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = 'gray';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, canvas_ctx.width, canvas_ctx.height);
+  // ctx.fillStyle = 'gray';
+  // ctx.fillRect(0, 0, canvas_ctx.width, canvas_ctx.height);
   ctx.fillStyle = 'black';
-  if (twgl.resizeCanvasToDisplaySize(canvas)) {
+  if (or(twgl.resizeCanvasToDisplaySize(canvas_ctx), twgl.resizeCanvasToDisplaySize(canvas_gl))) {
     // resizing stuff
+    gl.viewport(0,0,canvas_gl.width,canvas_gl.height);
   }
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   fillText(`Profit: ${master_cost}`, Vec2.zero);
-  ctx.translate(camera.center.x + canvas.width / 2, camera.center.y + canvas.height / 2);
+  ctx.translate(camera.center.x + canvas_ctx.width / 2, camera.center.y + canvas_ctx.height / 2);
   ctx.textBaseline = 'middle';
 
+  background_drawer.draw({
+    u_camera_pos: camera.center.toArray(),
+    u_camera_size: [canvas_gl.width, canvas_gl.height],
+  });
+
   // logic
-  const rect = canvas.getBoundingClientRect();
-  const cur_mouse_pos = new Vec2(input.mouse.clientX - rect.left, input.mouse.clientY - rect.top).sub(camera.center).sub(new Vec2(canvas.width / 2, canvas.height / 2));
+  const rect = canvas_ctx.getBoundingClientRect();
+  const cur_mouse_pos = new Vec2(input.mouse.clientX - rect.left, input.mouse.clientY - rect.top).sub(camera.center).sub(new Vec2(canvas_ctx.width / 2, canvas_ctx.height / 2));
   const delta_mouse = new Vec2(input.mouse.clientX - input.mouse.prev_clientX, input.mouse.clientY - input.mouse.prev_clientY);
   let needs_recalc = false;
 
@@ -786,5 +880,9 @@ if (loading_screen_element) {
   }, { once: true });
 } else {
   animation_id = requestAnimationFrame(every_frame);
+}
+
+function or(a: boolean, b: boolean) {
+  return a || b;
 }
 
