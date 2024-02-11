@@ -194,9 +194,9 @@ class RealFactory {
 }
 
 class StubFactory {
+  public recipe: 'stub' = 'stub';
   constructor(
     public pos: Vec2,
-    public recipe: 'stub' = 'stub',
   ) { }
 
   public get fixed(): boolean {
@@ -572,6 +572,11 @@ function every_frame(cur_timestamp: number) {
         if (interaction_state.target !== null) {
           edges.push(new Edge(interaction_state.source, interaction_state.target));
           needs_recalc = true;
+        } else {
+          const new_stub = new StubFactory(cur_mouse_pos);
+          factories.push(new_stub);
+          edges.push(new Edge(interaction_state.source, new_stub));
+          needs_recalc = true;
         }
         interaction_state = { tag: 'none' };
       }
@@ -640,13 +645,13 @@ function every_frame(cur_timestamp: number) {
 
   ctx.beginPath();
   factories.forEach(fac => {
-    drawCircle(fac.pos, CONFIG.factory_size);
+    drawCircle(fac.pos, (fac.recipe === 'stub' ? .5 : 1) * CONFIG.factory_size);
   })
   ctx.stroke();
 
   ctx.beginPath();
   factories.forEach(fac => {
-    drawCircle(fac.pos, CONFIG.factory_size * (
+    drawCircle(fac.pos, CONFIG.factory_size * (fac.recipe === 'stub' ? .5 : 1) * (
       (interaction_state.tag === 'hovering_factory' && fac === interaction_state.hovered_factory
         || interaction_state.tag === 'making_rail' && fac === interaction_state.target)
         ? .8 : .5));
