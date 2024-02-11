@@ -182,7 +182,16 @@ class Recipe {
   }
 }
 
+const next_factory_id: () => number = (function () {
+  let id = -1;
+  return () => {
+    id += 1;
+    return id;
+  }
+})();
+
 class RealFactory {
+  public id: number;
   constructor(
     public pos: Vec2,
     public recipe: Recipe,
@@ -190,14 +199,19 @@ class RealFactory {
     // public max_production: number,
     // how many copies of the recipe are processed each second // not really
     public production: number = 0,
-  ) { }
+  ) {
+    this.id = next_factory_id();
+  }
 }
 
 class StubFactory {
+  public id: number;
   public recipe: 'stub' = 'stub';
   constructor(
     public pos: Vec2,
-  ) { }
+  ) {
+    this.id = next_factory_id();
+  }
 
   public get fixed(): boolean {
     return false
@@ -296,10 +310,11 @@ async function recalcMaxProfit() {
   real_factories.forEach(f => {
     f.production = 0;
   });
+  const stub_factories: StubFactory[] = factories.filter(x => x.recipe === 'stub') as StubFactory[];
 
-  const production_limits = real_factories.map((f, factory_index) => ({
-    name: `maxproduction_${factory_index}`,
-    vars: [{ name: `production_${factory_index}`, coef: 1 }],
+  const production_limits = real_factories.map(f => ({
+    name: `maxproduction_${f.id}`,
+    vars: [{ name: `production_${f.id}`, coef: 1 }],
     // bnds: { type: glpk.GLP_UP, ub: f.max_production, lb: 0 },
     bnds: { type: glpk.GLP_DB, ub: fixed_recipes.includes(f.recipe) ? 1 : CONFIG.max_production, lb: 0 },
   }));
@@ -310,7 +325,7 @@ async function recalcMaxProfit() {
       direction: glpk.GLP_MAX,
       name: "profit",
       vars: [
-        ...real_factories.map((f, factory_id) => ({ name: `production_${factory_id}`, coef: -f.recipe.cost })),
+        ...real_factories.map(f => ({ name: `production_${f.id}`, coef: -f.recipe.cost })),
         ...edges.flatMap((e, edge_id) => e.traffic.map(([_, item]) => {
           return { name: `transport_${edge_id}_${item.id}`, coef: -e.dist() * item.transport_cost };
         }))
@@ -318,7 +333,7 @@ async function recalcMaxProfit() {
     },
     subjectTo: [
       ...production_limits,
-      ...real_factories.flatMap((f, factory_id) => {
+      ...real_factories.flatMap(f => {
         return f.recipe.inputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
@@ -328,14 +343,14 @@ async function recalcMaxProfit() {
           });
 
           return {
-            name: `balancein_${factory_id}_${item.id}`,
-            vars: [{ name: `production_${factory_id}`, coef: -amount },
+            name: `balancein_${f.id}_${item.id}`,
+            vars: [{ name: `production_${f.id}`, coef: -amount },
             ...asdf],
             bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
           }
         })
       }),
-      ...real_factories.flatMap((f, factory_id) => {
+      ...real_factories.flatMap(f => {
         return f.recipe.outputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
@@ -345,14 +360,31 @@ async function recalcMaxProfit() {
           });
 
           return {
-            name: `balanceout_${factory_id}_${item.id}`,
-            vars: [{ name: `production_${factory_id}`, coef: -amount },
+            name: `balanceout_${f.id}_${item.id}`,
+            vars: [{ name: `production_${f.id}`, coef: -amount },
             ...asdf],
             bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
           }
         })
       }),
-
+      ...stub_factories.flatMap(f => {
+        return items.map(item => {
+          let asdf: { name: string, coef: number }[] = [];
+          edges.forEach((e, edge_id) => {
+            if (e.source === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: -1 });
+            }
+            if (e.target === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
+            }
+          });
+          return {
+            name: `balancearound_${f.id}_${item.id}`,
+            vars: asdf,
+            bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
+          }
+        }).filter(x => x.vars.length > 0);
+      })
     ],
   })).result;
 
@@ -361,7 +393,7 @@ async function recalcMaxProfit() {
     if (name.startsWith('production')) {
       const factory_id = Number(name.split('_')[1]);
       const factory = factories[factory_id];
-      if (factory.recipe === 'stub') throw new Error();
+      if (factory.recipe === 'stub') throw new Error(`stub factory ${factory_id} has production ${value}`);
       factory.production = value;
     } else if (name.startsWith('transport')) {
       const [_, edge_id, item_id] = name.split('_');
