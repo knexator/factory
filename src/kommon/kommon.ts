@@ -16,6 +16,10 @@ export function fromCount<T>(n: number, callback: (index: number) => T): T[] {
     return result;
 }
 
+export function repeat<T>(n: number, thing: T): T[] {
+    return Array(n).fill(thing);
+}
+
 export function fromRange<T>(lo: number, hi: number, callback: (index: number) => T): T[] {
     let count = hi - lo;
     let result = Array(count);

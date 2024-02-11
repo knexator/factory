@@ -2,7 +2,7 @@ import * as twgl from "twgl.js"
 import GUI from "lil-gui";
 import { Grid2D } from "./kommon/grid2D";
 import { Input, KeyCode, Mouse, MouseButton } from "./kommon/input";
-import { DefaultMap, deepcopy, fromCount, fromRange, objectMap, zip2 } from "./kommon/kommon";
+import { DefaultMap, deepcopy, fromCount, fromRange, objectMap, repeat, zip2 } from "./kommon/kommon";
 import { mod, towards as approach, lerp, inRange, clamp, argmax, argmin, max, remap, clamp01, randomInt, randomFloat, randomChoice } from "./kommon/math";
 import { canvasFromAscii } from "./kommon/spritePS";
 import { initGL2, IVec, Vec2, Color, GenericDrawer, StatefulDrawer, CircleDrawer, m3, CustomSpriteDrawer, Transform, IRect, IColor, IVec2, FullscreenShader } from "kanvas2d"
@@ -73,7 +73,7 @@ const rulesets: Record<string, Ruleset> = {
       ['💾', 200], // green circuit
       ['🛴', 100], // transport belt
       ['🦾', 50], // inserter
-    ] as [string, number][]).map(([str, stack]) => [str, 100 / stack]),
+    ] as [string, number][]).map(([str, stack]) => [str, 100 / stack] as [string, number]).flatMap(([name, cost]) => [[name, cost], [`📦${name}`, cost]]),
 
     fixed_recipes: [
       ['🔴', ''],
@@ -93,6 +93,9 @@ const rulesets: Record<string, Ruleset> = {
 
       ['🧱,⚙️', '🔴'],
       ['🛴,🦾', '🟢'],
+
+      ...(['🔴', '🟢', '🔥', '🧱', '⛏️🧱', '🔩', '⛏️🔩', '⚙️', '🔌', '💾', '🛴', '🦾',]
+        .flatMap(x => [[repeat(5, x).join(','), `📦${x}`], [`📦${x}`, repeat(5, x).join(',')]] as [string, string][])),
     ],
     fixed_factories: [
       ...fromCount(5, k => [0, new Vec2(k * 100, -50)]) as [number, Vec2][],
@@ -211,7 +214,7 @@ let edges: Edge[];
 
 function setRuleset(ruleset: Ruleset): void {
   items = ruleset.items.map(([name, cost], k) => new ItemKind(name, cost, k));
-  fixed_recipes = ruleset.fixed_recipes.map(([in_str, out_str]) => Recipe.build(out_str === '' ? -10_000 : 100, in_str, out_str));
+  fixed_recipes = ruleset.fixed_recipes.map(([in_str, out_str]) => Recipe.build(out_str === '' ? -100_000 : 100, in_str, out_str));
   user_recipes = ruleset.user_recipes.map(([in_str, out_str]) => Recipe.build(100, in_str, out_str));
   factories = ruleset.fixed_factories.map(([recipe_index, pos]) => new Factory(pos, fixed_recipes[recipe_index], true));
   edges = [];
@@ -387,7 +390,7 @@ async function recalcMaxProfit() {
     name: `maxproduction_${factory_index}`,
     vars: [{ name: `production_${factory_index}`, coef: 1 }],
     // bnds: { type: glpk.GLP_UP, ub: f.max_production, lb: 0 },
-    bnds: { type: glpk.GLP_UP, ub: fixed_recipes.includes(f.recipe) ? 1 : CONFIG.max_production, lb: 0 },
+    bnds: { type: glpk.GLP_DB, ub: fixed_recipes.includes(f.recipe) ? 1 : CONFIG.max_production, lb: 0 },
   }));
 
   const result = (await glpk.solve({
