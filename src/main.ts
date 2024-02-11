@@ -113,7 +113,7 @@ const CONFIG = {
   factory_size: 20,
   breathing_space_multiplier: 0,
   label_spacing: 40,
-  auto_edges: true,
+  auto_edges: false,
   editor_mode: false,
   max_production: 3,
   ruleset: "POTATO",
@@ -192,15 +192,20 @@ const next_factory_id: () => number = (function () {
 
 class RealFactory {
   public id: number;
+  // how many copies of the recipe are processed each second // not really
+  public production: number = 0;
   constructor(
     public pos: Vec2,
     public recipe: Recipe,
     public fixed: boolean,
+    override_id: number | null = null,
     // public max_production: number,
-    // how many copies of the recipe are processed each second // not really
-    public production: number = 0,
   ) {
-    this.id = next_factory_id();
+    if(override_id === null) {
+      this.id = next_factory_id();
+    } else {
+      this.id = override_id;
+    }
   }
 }
 
@@ -505,9 +510,9 @@ let interaction_state: {
   source: Factory,
   target: Factory | null,
 } | {
-  tag: 'making_factory',
-  pos: Vec2,
-  recipe: Recipe | null,
+  tag: 'specializing_stub',
+  stub: Factory,
+  hovering_recipe: Recipe | null,
 } | {
   tag: 'moving_factory',
   factory: Factory,
@@ -557,9 +562,8 @@ function every_frame(cur_timestamp: number) {
       } else if (factory_under_mouse) {
         // hover
         interaction_state = { tag: 'hovering_factory', hovered_factory: factory_under_mouse };
-      } else if (input.mouse.wasPressed(MouseButton.Right)) {
-        // create factory
-        interaction_state = { tag: 'making_factory', pos: cur_mouse_pos, recipe: null };
+      } else if (input.keyboard.wasPressed(KeyCode.KeyE)) {
+        factories.push(new StubFactory(cur_mouse_pos));
       }
       break;
     case "hovering_factory":
@@ -571,6 +575,8 @@ function every_frame(cur_timestamp: number) {
         interaction_state = { tag: 'making_rail', source: interaction_state.hovered_factory, target: null };
       } else if (input.mouse.wasPressed(MouseButton.Left) && !interaction_state.hovered_factory.fixed) {
         interaction_state = { tag: 'moving_factory', factory: interaction_state.hovered_factory };
+      } else if (input.keyboard.wasPressed(KeyCode.Space) && factory_under_mouse.recipe === 'stub') {
+        interaction_state = { tag: 'specializing_stub', stub: interaction_state.hovered_factory, hovering_recipe: null };
       }
       break;
     case 'moving_factory':
@@ -613,34 +619,41 @@ function every_frame(cur_timestamp: number) {
         interaction_state = { tag: 'none' };
       }
       break;
-    case "making_factory":
-      interaction_state.recipe = null;
-      Object.entries(CONFIG.editor_mode ? [...fixed_recipes, ...user_recipes] : user_recipes).forEach(([name, recipe], k) => {
-        if (interaction_state.tag !== 'making_factory') throw new Error();
-        const selected = inRange((cur_mouse_pos.y - interaction_state.pos.y) / CONFIG.label_spacing, k - .5, k + .5);
+    case "specializing_stub":
+      interaction_state.hovering_recipe = null;
+      (CONFIG.editor_mode ? [...fixed_recipes, ...user_recipes] : user_recipes).forEach((recipe, k) => {
+        if (interaction_state.tag !== 'specializing_stub') throw new Error();
+        const selected = inRange((cur_mouse_pos.y - interaction_state.stub.pos.y) / CONFIG.label_spacing, k - .5, k + .5);
         {
           const in_str = resourcesToString(recipe.inputs);
           const out_str = resourcesToString(recipe.outputs);
           ctx.textAlign = 'center';
           ctx.textAlign = 'right';
-          fillText(in_str, interaction_state.pos.add(new Vec2(-CONFIG.factory_size * 1.25, k * CONFIG.label_spacing)));
+          fillText(in_str, interaction_state.stub.pos.add(new Vec2(-CONFIG.factory_size * 1.25, k * CONFIG.label_spacing)));
           ctx.textAlign = 'left';
-          fillText(out_str, interaction_state.pos.add(new Vec2(CONFIG.factory_size * 1.25, k * CONFIG.label_spacing)));
+          fillText(out_str, interaction_state.stub.pos.add(new Vec2(CONFIG.factory_size * 1.25, k * CONFIG.label_spacing)));
 
           if (selected) {
             ctx.textAlign = 'center';
-            fillText('->', interaction_state.pos.addY(k * CONFIG.label_spacing));
+            fillText('->', interaction_state.stub.pos.addY(k * CONFIG.label_spacing));
           }
         }
         // fillText(recipe.toString(), interaction_state.pos.add(new Vec2(selected ? 30 : 0, k * CONFIG.label_spacing)))
         // fillText(name, interaction_state.pos.add(new Vec2(selected ? 30 : 0, k * CONFIG.label_spacing)))
         if (selected) {
-          interaction_state.recipe = recipe;
+          interaction_state.hovering_recipe = recipe;
         }
       });
-      if (input.mouse.wasReleased(MouseButton.Right)) {
-        if (interaction_state.recipe !== null) {
-          factories.push(new RealFactory(interaction_state.pos, interaction_state.recipe, false));
+      if (input.keyboard.wasReleased(KeyCode.Space)) {
+        if (interaction_state.hovering_recipe !== null) {
+          const old_stub = interaction_state.stub;
+          const new_factory = new RealFactory(old_stub.pos, interaction_state.hovering_recipe, false, old_stub.id);
+          edges.forEach(e => {
+            if (e.source === old_stub) e.source = new_factory;
+            if (e.target === old_stub) e.target = new_factory;
+          });
+          if (factories.indexOf(old_stub) === -1) throw new Error("cant find old_stub");
+          factories[factories.indexOf(old_stub)] = new_factory;
           needs_recalc = true;
         }
         interaction_state = { tag: 'none' };
