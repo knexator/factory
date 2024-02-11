@@ -182,7 +182,7 @@ class Recipe {
   }
 }
 
-class Factory {
+class RealFactory {
   constructor(
     public pos: Vec2,
     public recipe: Recipe,
@@ -192,6 +192,19 @@ class Factory {
     public production: number = 0,
   ) { }
 }
+
+class StubFactory {
+  constructor(
+    public pos: Vec2,
+    public recipe: 'stub' = 'stub',
+  ) { }
+
+  public get fixed(): boolean {
+    return false
+  }
+}
+
+type Factory = RealFactory | StubFactory;
 
 class Edge {
   constructor(
@@ -216,8 +229,26 @@ function setRuleset(ruleset: Ruleset): void {
   items = ruleset.items.map(([name, cost], k) => new ItemKind(name, cost, k));
   fixed_recipes = ruleset.fixed_recipes.map(([in_str, out_str]) => Recipe.build(out_str === '' ? -100_000 : 100, in_str, out_str));
   user_recipes = ruleset.user_recipes.map(([in_str, out_str]) => Recipe.build(100, in_str, out_str));
-  factories = ruleset.fixed_factories.map(([recipe_index, pos]) => new Factory(pos, fixed_recipes[recipe_index], true));
+  factories = ruleset.fixed_factories.map(([recipe_index, pos]) => new RealFactory(pos, fixed_recipes[recipe_index], true));
   edges = [];
+}
+
+function commonItems(source: Factory, target: Factory): ItemKind[] {
+  if (source.recipe === 'stub') {
+    if (target.recipe === 'stub') {
+      return items;
+    } else {
+      return target.recipe.inputs.map(([_, item]) => item);
+    }
+  } else {
+    if (target.recipe === 'stub') {
+      return source.recipe.outputs.map(([_, item]) => item);
+    } else {
+      const inbounds = source.recipe.outputs.map(([_, item]) => item);
+      const outbounds = target.recipe.inputs.map(([_, item]) => item);
+      return inbounds.filter(value => outbounds.includes(value));
+    }
+  }
 }
 
 setRuleset(rulesets[CONFIG.ruleset]);
@@ -225,14 +256,14 @@ setRuleset(rulesets[CONFIG.ruleset]);
 function randomizeMap(only_fixed: boolean): void {
   if (only_fixed) {
     fromCount(3 * fixed_recipes.length, _ => {
-      factories.push(new Factory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), fixed_recipes[randomInt(1, fixed_recipes.length)], true));
+      factories.push(new RealFactory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), fixed_recipes[randomInt(1, fixed_recipes.length)], true));
     });
   } else {
     fromCount(3 * fixed_recipes.length, _ => {
-      factories.push(new Factory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), fixed_recipes[randomInt(1, fixed_recipes.length)], true));
+      factories.push(new RealFactory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), fixed_recipes[randomInt(1, fixed_recipes.length)], true));
     });
     fromCount(3 * user_recipes.length, _ => {
-      factories.push(new Factory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), randomChoice(user_recipes), false));
+      factories.push(new RealFactory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), randomChoice(user_recipes), false));
     });
   }
   edges = [];
@@ -247,31 +278,26 @@ async function recalcMaxProfit() {
   if (CONFIG.auto_edges) {
     edges = [];
     factories.forEach(source => {
-      const inbounds = source.recipe.outputs.map(([_, item]) => item);
       factories.forEach(target => {
-        const outbounds = target.recipe.inputs.map(([_, item]) => item);
-        const traffic = inbounds.filter(value => outbounds.includes(value)).map(value => {
-          return [0, value];
-        }) as [number, ItemKind][];
-        if (traffic.length > 0) {
-          edges.push(new Edge(source, target, traffic));
+        if (source === target) return;
+        const common = commonItems(source, target);
+        if (common.length > 0) {
+          edges.push(new Edge(source, target, common.map(c => [0, c])));
         }
       });
     });
   } else {
     edges.forEach(edge => {
-      const inputs = edge.source.recipe.outputs.map(([_, item]) => item);
-      const outputs = edge.target.recipe.inputs.map(([_, item]) => item);
-      edge.traffic = inputs.filter(value => outputs.includes(value)).map(value => {
-        return [0, value];
-      });
+      const common = commonItems(edge.source, edge.target);
+      edge.traffic = common.map(item => [0, item]);
     });
   }
-  factories.forEach(f => {
+  const real_factories: RealFactory[] = factories.filter(x => x.recipe !== 'stub') as RealFactory[];
+  real_factories.forEach(f => {
     f.production = 0;
   });
 
-  const production_limits = factories.map((f, factory_index) => ({
+  const production_limits = real_factories.map((f, factory_index) => ({
     name: `maxproduction_${factory_index}`,
     vars: [{ name: `production_${factory_index}`, coef: 1 }],
     // bnds: { type: glpk.GLP_UP, ub: f.max_production, lb: 0 },
@@ -284,7 +310,7 @@ async function recalcMaxProfit() {
       direction: glpk.GLP_MAX,
       name: "profit",
       vars: [
-        ...factories.map((f, factory_id) => ({ name: `production_${factory_id}`, coef: -f.recipe.cost })),
+        ...real_factories.map((f, factory_id) => ({ name: `production_${factory_id}`, coef: -f.recipe.cost })),
         ...edges.flatMap((e, edge_id) => e.traffic.map(([_, item]) => {
           return { name: `transport_${edge_id}_${item.id}`, coef: -e.dist() * item.transport_cost };
         }))
@@ -292,7 +318,7 @@ async function recalcMaxProfit() {
     },
     subjectTo: [
       ...production_limits,
-      ...factories.flatMap((f, factory_id) => {
+      ...real_factories.flatMap((f, factory_id) => {
         return f.recipe.inputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
@@ -309,7 +335,7 @@ async function recalcMaxProfit() {
           }
         })
       }),
-      ...factories.flatMap((f, factory_id) => {
+      ...real_factories.flatMap((f, factory_id) => {
         return f.recipe.outputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
@@ -334,7 +360,9 @@ async function recalcMaxProfit() {
   Object.entries(result.vars).forEach(([name, value]) => {
     if (name.startsWith('production')) {
       const factory_id = Number(name.split('_')[1]);
-      factories[factory_id].production = value;
+      const factory = factories[factory_id];
+      if (factory.recipe === 'stub') throw new Error();
+      factory.production = value;
     } else if (name.startsWith('transport')) {
       const [_, edge_id, item_id] = name.split('_');
       const edge = edges[Number(edge_id)];
@@ -528,12 +556,13 @@ function every_frame(cur_timestamp: number) {
       interaction_state.target = factory_under_mouse ?? null;
 
       // ensure valid target
+      // cant connect to itself
       if (interaction_state.target === interaction_state.source) interaction_state.target = null;
-      if (interaction_state.target !== null &&
-        !interaction_state.source.recipe.outputs.some(([_, in_kind]) => {
-          if (interaction_state.tag !== 'making_rail' || interaction_state.target === null) throw new Error();
-          return interaction_state.target.recipe.inputs.some(([_, out_kind]) => in_kind === out_kind);
-        })) interaction_state.target = null;
+      // cant connect without a common input/output
+      if (interaction_state.target !== null && commonItems(interaction_state.source, interaction_state.target).length === 0) {
+        interaction_state.target = null;
+      }
+      // cant connect existing connection
       if (interaction_state.target && edges.some(({ source, target }) => {
         if (interaction_state.tag !== 'making_rail' || interaction_state.target === null) throw new Error();
         return interaction_state.source === source && interaction_state.target === target;
@@ -574,7 +603,7 @@ function every_frame(cur_timestamp: number) {
       });
       if (input.mouse.wasReleased(MouseButton.Right)) {
         if (interaction_state.recipe !== null) {
-          factories.push(new Factory(interaction_state.pos, interaction_state.recipe, false));
+          factories.push(new RealFactory(interaction_state.pos, interaction_state.recipe, false));
           needs_recalc = true;
         }
         interaction_state = { tag: 'none' };
@@ -625,6 +654,7 @@ function every_frame(cur_timestamp: number) {
   ctx.fill();
 
   factories.forEach(fac => {
+    if (fac.recipe === 'stub') return;
     const in_str = resourcesToString(fac.recipe.inputs);
     const out_str = resourcesToString(fac.recipe.outputs);
     ctx.textAlign = 'right';
@@ -681,7 +711,11 @@ function every_frame(cur_timestamp: number) {
   // debug
   if (input.keyboard.wasPressed(KeyCode.Space)) {
     factories.forEach((f, k) => {
-      console.log(`Factory ${k}, ${resourcesToString(f.recipe.inputs)} -> ${resourcesToString(f.recipe.outputs)}, at ${f.production}`);
+      if (f.recipe === 'stub') {
+        console.log(`Factory ${k}, stub`);
+      } else {
+        console.log(`Factory ${k}, ${resourcesToString(f.recipe.inputs)} -> ${resourcesToString(f.recipe.outputs)}, at ${f.production}`);
+      }
     });
     edges.forEach((e, k) => {
       console.log(`Edge ${k}, ${factories.indexOf(e.source)} -> ${factories.indexOf(e.target)}:`);
