@@ -238,124 +238,9 @@ function randomizeMap(only_fixed: boolean): void {
   edges = [];
 }
 
-let master_cost = Infinity;
+let master_profit = 0;
 async function recalcEdgeWeightsAndFactoryProductions() {
   await recalcMaxProfit();
-}
-
-async function recalcCheapest() {
-  function allZero() {
-    edges.forEach(edge => {
-      edge.traffic = [];
-    });
-    factories.forEach(f => {
-      f.production = 0;
-    });
-  }
-
-  if (CONFIG.auto_edges) {
-    edges = [];
-    factories.forEach(source => {
-      const inbounds = source.recipe.outputs.map(([_, item]) => item);
-      factories.forEach(target => {
-        const outbounds = target.recipe.inputs.map(([_, item]) => item);
-        const traffic = inbounds.filter(value => outbounds.includes(value)).map(value => {
-          return [0, value];
-        }) as [number, ItemKind][];
-        if (traffic.length > 0) {
-          edges.push(new Edge(source, target, traffic));
-        }
-      });
-    });
-  } else {
-    edges.forEach(edge => {
-      const inputs = edge.source.recipe.outputs.map(([_, item]) => item);
-      const outputs = edge.target.recipe.inputs.map(([_, item]) => item);
-      edge.traffic = inputs.filter(value => outputs.includes(value)).map(value => {
-        return [0, value];
-      });
-    });
-  }
-  factories.forEach(f => {
-    f.production = 0;
-  });
-
-  const result = (await glpk.solve({
-    name: 'LP',
-    objective: {
-      direction: glpk.GLP_MIN,
-      name: "cost",
-      vars: [
-        ...factories.map((f, factory_id) => ({ name: `production_${factory_id}`, coef: f.recipe.cost })),
-        ...edges.flatMap((e, edge_id) => e.traffic.map(([_, item]) => {
-          return { name: `transport_${edge_id}_${item.id}`, coef: e.dist() * item.transport_cost };
-        }))
-      ],
-    },
-    subjectTo: [
-      {
-        name: 'final',
-        vars: [
-          { name: 'production_0', coef: 1 }
-        ],
-        bnds: { type: glpk.GLP_FX, ub: 1, lb: 1 }
-      },
-      ...factories.flatMap((f, factory_id) => {
-        return f.recipe.inputs.map(([amount, item], _) => {
-          let asdf: { name: string, coef: number }[] = [];
-          edges.forEach((e, edge_id) => {
-            if (e.target === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
-              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
-            }
-          });
-
-          return {
-            name: `balancein_${factory_id}_${item.id}`,
-            vars: [{ name: `production_${factory_id}`, coef: -amount },
-            ...asdf],
-            bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
-          }
-        })
-      }),
-      ...factories.flatMap((f, factory_id) => {
-        return f.recipe.outputs.map(([amount, item], _) => {
-          let asdf: { name: string, coef: number }[] = [];
-          edges.forEach((e, edge_id) => {
-            if (e.source === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
-              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
-            }
-          });
-
-          return {
-            name: `balanceout_${factory_id}_${item.id}`,
-            vars: [{ name: `production_${factory_id}`, coef: -amount },
-            ...asdf],
-            bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
-          }
-        })
-      }),
-    ],
-  })).result;
-
-  if (result.status !== 5) {
-    master_cost = Infinity;
-    allZero();
-  } else {
-    master_cost = result.z;
-    Object.entries(result.vars).forEach(([name, value]) => {
-      if (name.startsWith('production')) {
-        const factory_id = Number(name.split('_')[1]);
-        factories[factory_id].production = value;
-      } else if (name.startsWith('transport')) {
-        const [_, edge_id, item_id] = name.split('_');
-        const edge = edges[Number(edge_id)];
-        const traffic_index = edge.traffic.findIndex(([_, item]) => item.id === Number(item_id));
-        edge.traffic[traffic_index][0] = value;
-      } else {
-        throw new Error();
-      }
-    });
-  }
 }
 
 async function recalcMaxProfit() {
@@ -445,7 +330,7 @@ async function recalcMaxProfit() {
     ],
   })).result;
 
-  master_cost = result.z;
+  master_profit = result.z;
   Object.entries(result.vars).forEach(([name, value]) => {
     if (name.startsWith('production')) {
       const factory_id = Number(name.split('_')[1]);
@@ -588,7 +473,7 @@ function every_frame(cur_timestamp: number) {
   }
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  fillText(`Profit: ${master_cost}`, Vec2.zero);
+  fillText(`Profit: ${master_profit}`, Vec2.zero);
   ctx.translate(camera.center.x + canvas_ctx.width / 2, camera.center.y + canvas_ctx.height / 2);
   ctx.textBaseline = 'middle';
 
