@@ -3,7 +3,7 @@ import GUI from "lil-gui";
 import { Grid2D } from "./kommon/grid2D";
 import { Input, KeyCode, Mouse, MouseButton } from "./kommon/input";
 import { DefaultMap, deepcopy, fromCount, fromRange, objectMap, repeat, zip2 } from "./kommon/kommon";
-import { mod, towards as approach, lerp, inRange, clamp, argmax, argmin, max, remap, clamp01, randomInt, randomFloat, randomChoice } from "./kommon/math";
+import { mod, towards as approach, lerp, inRange, clamp, argmax, argmin, max, remap, clamp01, randomInt, randomFloat, randomChoice, doSegmentsIntersect } from "./kommon/math";
 import { canvasFromAscii } from "./kommon/spritePS";
 import { initGL2, IVec, Vec2, Color, GenericDrawer, StatefulDrawer, CircleDrawer, m3, CustomSpriteDrawer, Transform, IRect, IColor, IVec2, FullscreenShader } from "kanvas2d"
 import GLPK from "glpk.js"
@@ -191,7 +191,7 @@ class RealFactory {
     public recipe: Recipe,
     public fixed: boolean,
     // public max_production: number,
-  ) {}
+  ) { }
 }
 
 class StubFactory {
@@ -199,7 +199,7 @@ class StubFactory {
   public fixed: boolean = false;
   constructor(
     public pos: Vec2,
-  ) {}
+  ) { }
 }
 
 type Factory = RealFactory | StubFactory;
@@ -496,6 +496,9 @@ let interaction_state: {
 } | {
   tag: 'moving_factory',
   factory: Factory,
+} | {
+  tag: 'deleting_edge',
+  source: Vec2,
 } = { tag: 'none' };
 
 let last_timestamp = 0;
@@ -548,6 +551,8 @@ function every_frame(cur_timestamp: number) {
         const new_stub = new StubFactory(cur_mouse_pos);
         factories.push(new_stub)
         interaction_state = { tag: 'making_rail', source: new_stub, target: null };
+      } else if (input.keyboard.wasPressed(KeyCode.ControlLeft)) {
+        interaction_state = { tag: 'deleting_edge', source: cur_mouse_pos };
       }
       break;
     case "hovering_factory":
@@ -561,6 +566,13 @@ function every_frame(cur_timestamp: number) {
         interaction_state = { tag: 'moving_factory', factory: interaction_state.hovered_factory };
       } else if (input.keyboard.wasPressed(KeyCode.Space) && factory_under_mouse.recipe === 'stub') {
         interaction_state = { tag: 'specializing_stub', stub: interaction_state.hovered_factory, hovering_recipe: null };
+      } else if (input.keyboard.wasPressed(KeyCode.ControlLeft) && !interaction_state.hovered_factory.fixed) {
+        // delete factory
+        const old_factory = interaction_state.hovered_factory;
+        factories = factories.filter(f => f !== old_factory);
+        edges = edges.filter(e => e.source !== old_factory && e.target !== old_factory);
+        needs_recalc = true;
+        interaction_state = { tag: 'none' };
       }
       break;
     case 'moving_factory':
@@ -594,7 +606,7 @@ function every_frame(cur_timestamp: number) {
         if (interaction_state.target !== null) {
           edges.push(new Edge(interaction_state.source, interaction_state.target));
           needs_recalc = true;
-        } else {
+        } else if (factory_under_mouse === null) {
           const new_stub = new StubFactory(cur_mouse_pos);
           factories.push(new_stub);
           edges.push(new Edge(interaction_state.source, new_stub));
@@ -651,8 +663,32 @@ function every_frame(cur_timestamp: number) {
         interaction_state = { tag: 'none' };
       }
       break;
-    default:
+    case "deleting_edge":
+      const source_pos = interaction_state.source;
+      ctx.strokeStyle = "red";
+      ctx.beginPath();
+      moveTo(source_pos);
+      lineTo(cur_mouse_pos);
+      ctx.stroke();
+      const crossing_edges = edges.filter(e => {
+        return doSegmentsIntersect([source_pos, cur_mouse_pos], [e.source.pos, e.target.pos]);
+      });
+      ctx.strokeStyle = "magenta";
+      ctx.beginPath();
+      crossing_edges.forEach(e => {
+        moveTo(e.source.pos);
+        lineTo(e.target.pos);
+      });
+      ctx.stroke();
+      if (input.keyboard.wasReleased(KeyCode.ControlLeft)) {
+        edges = edges.filter(e => !crossing_edges.includes(e));
+        needs_recalc = true;
+        interaction_state = { tag: "none" };
+      }
+      ctx.strokeStyle = "black";
       break;
+    default:
+      throw new Error(`unimplemented interaction state: ${interaction_state}`);
   }
 
   // draw

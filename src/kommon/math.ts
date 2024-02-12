@@ -1,3 +1,5 @@
+import { Vec2 } from "kanvas2d";
+
 export function randomFloat(low_inclusive: number, high_exclusive: number): number {
     return low_inclusive + Math.random() * (high_exclusive - low_inclusive);
 }
@@ -128,4 +130,30 @@ export function randomChoice<T>(arr: T[]) {
         throw new Error("can't choose out of an empty array");
     }
     return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// written by GPT
+export function doSegmentsIntersect(segmentA: [Vec2, Vec2], segmentB: [Vec2, Vec2]): boolean {
+    const [a1, a2] = segmentA;
+    const [b1, b2] = segmentB;
+
+    const d1 = b1.sub(a1);
+    const d2 = b2.sub(a1);
+    const d3 = a2.sub(a1);
+
+    const cross1 = d1.cross(d3);
+    const cross2 = d2.cross(d3);
+
+    if (cross1 * cross2 >= 0) {
+        return false;
+    }
+
+    const d4 = a1.sub(b1);
+    const d5 = a2.sub(b1);
+    const d6 = b2.sub(b1);
+
+    const cross3 = d4.cross(d6);
+    const cross4 = d5.cross(d6);
+
+    return cross3 * cross4 < 0;
 }
