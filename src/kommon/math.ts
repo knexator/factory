@@ -157,3 +157,13 @@ export function doSegmentsIntersect(segmentA: [Vec2, Vec2], segmentB: [Vec2, Vec
 
     return cross3 * cross4 < 0;
 }
+
+export function closestPointOnSegment(segment: [Vec2, Vec2], point: Vec2): Vec2 {
+    const [segmentStart, segmentEnd] = segment;
+    const segmentVector = segmentEnd.sub(segmentStart);
+    const pointVector = point.sub(segmentStart);
+    const segmentLengthSquared = segmentVector.magSq();
+    const t = clamp01(pointVector.dot(segmentVector) / segmentLengthSquared);
+    const closestPoint = Vec2.lerp(segmentStart, segmentEnd, t);
+    return closestPoint;
+}

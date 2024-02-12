@@ -3,7 +3,7 @@ import GUI from "lil-gui";
 import { Grid2D } from "./kommon/grid2D";
 import { Input, KeyCode, Mouse, MouseButton } from "./kommon/input";
 import { DefaultMap, deepcopy, fromCount, fromRange, objectMap, repeat, zip2 } from "./kommon/kommon";
-import { mod, towards as approach, lerp, inRange, clamp, argmax, argmin, max, remap, clamp01, randomInt, randomFloat, randomChoice, doSegmentsIntersect } from "./kommon/math";
+import { mod, towards as approach, lerp, inRange, clamp, argmax, argmin, max, remap, clamp01, randomInt, randomFloat, randomChoice, doSegmentsIntersect, closestPointOnSegment } from "./kommon/math";
 import { canvasFromAscii } from "./kommon/spritePS";
 import { initGL2, IVec, Vec2, Color, GenericDrawer, StatefulDrawer, CircleDrawer, m3, CustomSpriteDrawer, Transform, IRect, IColor, IVec2, FullscreenShader } from "kanvas2d"
 import GLPK from "glpk.js"
@@ -556,6 +556,18 @@ function every_frame(cur_timestamp: number) {
         interaction_state = { tag: 'making_rail', source: new_stub, target: null };
       } else if (input.keyboard.wasPressed(KeyCode.KeyD)) {
         interaction_state = { tag: 'deleting_edge', source: cur_mouse_pos };
+      } else if (input.keyboard.wasPressed(KeyCode.KeyS)) {
+        var closest_point = Vec2.zero;
+        const edge_to_split = edges.find(e => {
+          closest_point = closestPointOnSegment([e.source.pos, e.target.pos], cur_mouse_pos);
+          return closest_point.sub(cur_mouse_pos).magSq() < (CONFIG.factory_size * CONFIG.factory_size);
+        });
+        if (edge_to_split !== undefined) {
+          const new_stub = new StubFactory(closest_point);
+          factories.push(new_stub);
+          edges.push(new Edge(new_stub, edge_to_split.target));
+          edge_to_split.target = new_stub;
+        }
       }
       break;
     case "hovering_factory":
@@ -567,7 +579,7 @@ function every_frame(cur_timestamp: number) {
         interaction_state = { tag: 'making_rail', source: interaction_state.hovered_factory, target: null };
       } else if (input.mouse.wasPressed(MouseButton.Left) && !interaction_state.hovered_factory.fixed) {
         interaction_state = { tag: 'moving_factory', factory: interaction_state.hovered_factory };
-      } else if (input.keyboard.wasPressed(KeyCode.Space) && factory_under_mouse.recipe === 'stub') {
+      } else if (input.keyboard.wasPressed(KeyCode.KeyF) && factory_under_mouse.recipe === 'stub') {
         interaction_state = { tag: 'specializing_stub', stub: interaction_state.hovered_factory, hovering_recipe: null };
       } else if (input.keyboard.wasPressed(KeyCode.KeyD) && !interaction_state.hovered_factory.fixed) {
         // delete factory
@@ -651,7 +663,7 @@ function every_frame(cur_timestamp: number) {
           interaction_state.hovering_recipe = recipe;
         }
       });
-      if (input.keyboard.wasReleased(KeyCode.Space)) {
+      if (input.keyboard.wasReleased(KeyCode.KeyF)) {
         if (interaction_state.hovering_recipe !== null) {
           const old_stub = interaction_state.stub;
           const new_factory = new RealFactory(old_stub.pos, interaction_state.hovering_recipe, false);
