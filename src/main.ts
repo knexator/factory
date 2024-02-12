@@ -182,45 +182,23 @@ class Recipe {
   }
 }
 
-const next_factory_id: () => number = (function () {
-  let id = -1;
-  return () => {
-    id += 1;
-    return id;
-  }
-})();
-
 class RealFactory {
-  public id: number;
   // how many copies of the recipe are processed each second // not really
   public production: number = 0;
   constructor(
     public pos: Vec2,
     public recipe: Recipe,
     public fixed: boolean,
-    override_id: number | null = null,
     // public max_production: number,
-  ) {
-    if(override_id === null) {
-      this.id = next_factory_id();
-    } else {
-      this.id = override_id;
-    }
-  }
+  ) {}
 }
 
 class StubFactory {
-  public id: number;
   public recipe: 'stub' = 'stub';
+  public fixed: boolean = false;
   constructor(
     public pos: Vec2,
-  ) {
-    this.id = next_factory_id();
-  }
-
-  public get fixed(): boolean {
-    return false
-  }
+  ) {}
 }
 
 type Factory = RealFactory | StubFactory;
@@ -317,9 +295,9 @@ async function recalcMaxProfit() {
   });
   const stub_factories: StubFactory[] = factories.filter(x => x.recipe === 'stub') as StubFactory[];
 
-  const production_limits = real_factories.map(f => ({
-    name: `maxproduction_${f.id}`,
-    vars: [{ name: `production_${f.id}`, coef: 1 }],
+  const production_limits = real_factories.map((f, f_id) => ({
+    name: `maxproduction_${f_id}`,
+    vars: [{ name: `production_${f_id}`, coef: 1 }],
     // bnds: { type: glpk.GLP_UP, ub: f.max_production, lb: 0 },
     bnds: { type: glpk.GLP_DB, ub: fixed_recipes.includes(f.recipe) ? 1 : CONFIG.max_production, lb: 0 },
   }));
@@ -330,7 +308,7 @@ async function recalcMaxProfit() {
       direction: glpk.GLP_MAX,
       name: "profit",
       vars: [
-        ...real_factories.map(f => ({ name: `production_${f.id}`, coef: -f.recipe.cost })),
+        ...real_factories.map((f, f_id) => ({ name: `production_${f_id}`, coef: -f.recipe.cost })),
         ...edges.flatMap((e, edge_id) => e.traffic.map(([_, item]) => {
           return { name: `transport_${edge_id}_${item.id}`, coef: -e.dist() * item.transport_cost };
         }))
@@ -338,7 +316,7 @@ async function recalcMaxProfit() {
     },
     subjectTo: [
       ...production_limits,
-      ...real_factories.flatMap(f => {
+      ...real_factories.flatMap((f, f_id) => {
         return f.recipe.inputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
@@ -348,14 +326,14 @@ async function recalcMaxProfit() {
           });
 
           return {
-            name: `balancein_${f.id}_${item.id}`,
-            vars: [{ name: `production_${f.id}`, coef: -amount },
+            name: `balancein_${f_id}_${item.id}`,
+            vars: [{ name: `production_${f_id}`, coef: -amount },
             ...asdf],
             bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
           }
         })
       }),
-      ...real_factories.flatMap(f => {
+      ...real_factories.flatMap((f, f_id) => {
         return f.recipe.outputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
@@ -365,14 +343,14 @@ async function recalcMaxProfit() {
           });
 
           return {
-            name: `balanceout_${f.id}_${item.id}`,
-            vars: [{ name: `production_${f.id}`, coef: -amount },
+            name: `balanceout_${f_id}_${item.id}`,
+            vars: [{ name: `production_${f_id}`, coef: -amount },
             ...asdf],
             bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
           }
         })
       }),
-      ...stub_factories.flatMap(f => {
+      ...stub_factories.flatMap((f, f_id) => {
         return items.map(item => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
@@ -384,7 +362,7 @@ async function recalcMaxProfit() {
             }
           });
           return {
-            name: `balancearound_${f.id}_${item.id}`,
+            name: `balancearound_${f_id}_${item.id}`,
             vars: asdf,
             bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
           }
@@ -397,8 +375,9 @@ async function recalcMaxProfit() {
   Object.entries(result.vars).forEach(([name, value]) => {
     if (name.startsWith('production')) {
       const factory_id = Number(name.split('_')[1]);
-      const factory = factories[factory_id];
-      if (factory.recipe === 'stub') throw new Error(`stub factory ${factory_id} has production ${value}`);
+      const factory = real_factories[factory_id];
+      // if (!factory) throw new Error(`falsy factory at id ${factory_id}, factories are ${factories}`);
+      // if (factory.recipe === 'stub') throw new Error(`stub factory ${factory_id} has production ${value}`);
       factory.production = value;
     } else if (name.startsWith('transport')) {
       const [_, edge_id, item_id] = name.split('_');
@@ -621,7 +600,15 @@ function every_frame(cur_timestamp: number) {
       break;
     case "specializing_stub":
       interaction_state.hovering_recipe = null;
-      (CONFIG.editor_mode ? [...fixed_recipes, ...user_recipes] : user_recipes).forEach((recipe, k) => {
+      const stub = interaction_state.stub;
+      const inbound_items = (edges.filter(e => e.target === stub).map(x => x.source)
+        .filter(f => f.recipe !== 'stub') as RealFactory[]).flatMap(f => f.recipe.outputs.map(([_, item]) => item));
+      const outbound_items = (edges.filter(e => e.source === stub).map(x => x.target)
+        .filter(f => f.recipe !== 'stub') as RealFactory[]).flatMap(f => f.recipe.inputs.map(([_, item]) => item));
+      (CONFIG.editor_mode ? [...fixed_recipes, ...user_recipes] : user_recipes).filter(recipe => {
+        return recipe.inputs.some(([_, item]) => inbound_items.includes(item))
+          || recipe.outputs.some(([_, item]) => outbound_items.includes(item));
+      }).forEach((recipe, k) => {
         if (interaction_state.tag !== 'specializing_stub') throw new Error();
         const selected = inRange((cur_mouse_pos.y - interaction_state.stub.pos.y) / CONFIG.label_spacing, k - .5, k + .5);
         {
@@ -647,7 +634,7 @@ function every_frame(cur_timestamp: number) {
       if (input.keyboard.wasReleased(KeyCode.Space)) {
         if (interaction_state.hovering_recipe !== null) {
           const old_stub = interaction_state.stub;
-          const new_factory = new RealFactory(old_stub.pos, interaction_state.hovering_recipe, false, old_stub.id);
+          const new_factory = new RealFactory(old_stub.pos, interaction_state.hovering_recipe, false);
           edges.forEach(e => {
             if (e.source === old_stub) e.source = new_factory;
             if (e.target === old_stub) e.target = new_factory;
