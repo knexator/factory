@@ -174,11 +174,11 @@ class Recipe {
 
     return new Recipe(
       [...input_counts.inner_map.entries()].map(([name, count]) => {
-        const item = single(items.filter(i => i.name === name));
+        const item = single(item_kinds.filter(i => i.name === name));
         return [count, item];
       }),
       [...output_counts.inner_map.entries()].map(([name, count]) => {
-        const item = single(items.filter(i => i.name === name));
+        const item = single(item_kinds.filter(i => i.name === name));
         return [count, item];
       }),
       cost
@@ -189,20 +189,46 @@ class Recipe {
 class RealFactory {
   // how many copies of the recipe are processed each second
   public production: number = 0;
+  public total_produced_items: number = 0;
+  public stored_input_items: ItemKind[] = [];
+  public stored_output_items: ItemKind[] = [];
+  public t: number = 0;
   constructor(
     public pos: Vec2,
     public recipe: Recipe,
     public fixed: boolean,
     // public max_production: number,
   ) { }
+
+  public get max_production(): number {
+    return this.recipe.inputs.length === 0
+      ? CONFIG.max_source_production
+      : this.recipe.outputs.length === 0
+        ? CONFIG.max_final_production
+        : CONFIG.max_intermediate_production;
+  }
+
+  public getOutgoingEdges(): Edge[] {
+    return edges.filter(e => e.source === this);
+  }
 }
 
 class StubFactory {
   public recipe: 'stub' = 'stub';
   public fixed: boolean = false;
+  public total_produced_items: number = 0;
+  public stored_input_items: ItemKind[] = [];
   constructor(
     public pos: Vec2,
   ) { }
+
+  public getOutgoingEdges(): Edge[] {
+    return edges.filter(e => e.source === this);
+  }
+
+  public get stored_output_items(): ItemKind[] {
+    return this.stored_input_items;
+  }
 }
 
 type Factory = RealFactory | StubFactory;
@@ -220,24 +246,34 @@ class Edge {
   }
 }
 
-let items: ItemKind[];
+class ActualItem {
+  constructor(
+    public kind: ItemKind,
+    public edge: Edge,
+    public progress: number,
+  ) { }
+}
+
+let item_kinds: ItemKind[];
 let fixed_recipes: Recipe[];
 let user_recipes: Recipe[];
 let factories: Factory[];
 let edges: Edge[];
+let actual_items: ActualItem[];
 
 function setRuleset(ruleset: Ruleset): void {
-  items = ruleset.items.map(([name, cost], k) => new ItemKind(name, cost, k));
+  item_kinds = ruleset.items.map(([name, cost], k) => new ItemKind(name, cost, k));
   fixed_recipes = ruleset.fixed_recipes.map(([in_str, out_str]) => Recipe.build(out_str === '' ? -100_000 : 100, in_str, out_str));
   user_recipes = ruleset.user_recipes.map(([in_str, out_str]) => Recipe.build(100, in_str, out_str));
   factories = ruleset.fixed_factories.map(([recipe_index, pos]) => new RealFactory(pos, fixed_recipes[recipe_index], true));
   edges = [];
+  actual_items = [];
 }
 
 function commonItems(source: Factory, target: Factory): ItemKind[] {
   if (source.recipe === 'stub') {
     if (target.recipe === 'stub') {
-      return items;
+      return item_kinds;
     } else {
       return target.recipe.inputs.map(([_, item]) => item);
     }
@@ -250,6 +286,21 @@ function commonItems(source: Factory, target: Factory): ItemKind[] {
       return inbounds.filter(value => outbounds.includes(value));
     }
   }
+}
+
+function removeItems(pool: ItemKind[], recipe: [number, ItemKind][]): ItemKind[] | null {
+  let new_pool = [...pool];
+  for (const [amount, kind] of recipe) {
+    for (let k = 0; k < amount; k++) {
+      let index = new_pool.findIndex(item => item === kind);
+      if (index === -1) {
+        return null
+      } else {
+        new_pool.splice(index, 1);
+      }
+    }
+  };
+  return new_pool;
 }
 
 setRuleset(rulesets[CONFIG.ruleset]);
@@ -272,7 +323,7 @@ function randomizeMap(only_fixed: boolean): void {
 
 let master_profit = 0;
 async function recalcEdgeWeightsAndFactoryProductions() {
-  await recalcMaxProfit();
+  // await recalcMaxProfit();
 }
 
 async function recalcMaxProfit() {
@@ -354,7 +405,7 @@ async function recalcMaxProfit() {
         })
       }),
       ...stub_factories.flatMap((f, f_id) => {
-        return items.map(item => {
+        return item_kinds.map(item => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
             if (e.source === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
@@ -508,6 +559,7 @@ let last_timestamp = 0;
 function every_frame(cur_timestamp: number) {
   // in seconds
   let delta_time = (cur_timestamp - last_timestamp) / 1000;
+  delta_time = clamp(delta_time, 0, 1 / 30);
   last_timestamp = cur_timestamp;
   input.startFrame();
   ctx.resetTransform();
@@ -537,6 +589,64 @@ function every_frame(cur_timestamp: number) {
   const cur_mouse_pos = new Vec2(input.mouse.clientX - rect.left, input.mouse.clientY - rect.top).sub(camera.center).sub(new Vec2(canvas_ctx.width / 2, canvas_ctx.height / 2));
   const delta_mouse = new Vec2(input.mouse.clientX - input.mouse.prev_clientX, input.mouse.clientY - input.mouse.prev_clientY);
   let needs_recalc = false;
+
+  // (factories.filter(f => f.recipe !== 'stub' && f.recipe.inputs.length === 0) as RealFactory[]).forEach(f => {
+  //   // update productors
+  //   f.t += delta_time / f.max_production;
+  //   while (f.t >= 1) {
+  //     // ASSUME THAT EACH SOURCE MAKES A SINGLE TYPE OF ITEM
+  //     const edges = f.get_outgoing_edges();
+  //     if (edges.length > 0) {
+  //       actual_items.push(new ActualItem(f.recipe.outputs[0][1], edges[mod(f.total_produced_items, edges.length)], 0));
+  //       f.total_produced_items += 1;
+  //     }
+  //     f.t -= 1;
+  //   }
+  // });
+
+  let items_to_remove: ActualItem[] = [];
+  actual_items.forEach(item => {
+    const new_progress = item.progress + delta_time / (item.edge.dist() * item.kind.transport_cost / 100);
+    if (new_progress < 1) {
+      item.progress = new_progress;
+    } else {
+      item.edge.target.stored_input_items.push(item.kind);
+      items_to_remove.push(item);
+    }
+  });
+  actual_items = actual_items.filter(x => !items_to_remove.includes(x));
+
+  factories.forEach(f => {
+    if (f.recipe !== "stub") {
+      if (f.t > 0) {
+        // already producing
+        f.t += delta_time / f.max_production;
+        if (f.t > 1) f.t = 0;
+      } else if (f.stored_output_items.length < 5) {
+        const new_pool = removeItems(f.stored_input_items, f.recipe.inputs);
+        if (new_pool !== null) {
+          // can actually produce
+          f.t += delta_time / f.max_production;
+          f.stored_input_items = new_pool;
+          for (const [amount, kind] of f.recipe.outputs) {
+            for (let k = 0; k < amount; k++) {
+              f.stored_output_items.push(kind);
+            }
+          }
+        }
+      }
+    }
+  });
+  factories.forEach(f => {
+    if (f.stored_output_items.length > 0) {
+      const outgoing_edges = f.getOutgoingEdges();
+      if (outgoing_edges.length > 0) {
+        // TODO: assumes that edge works, etc; fix 
+        const kind = f.stored_output_items.shift()!;
+        actual_items.push(new ActualItem(kind, outgoing_edges[0], 0));
+      }  
+    }
+  })
 
   const factory_under_mouse = factories.find(f => f.pos.sub(cur_mouse_pos).magSq() < CONFIG.factory_size * CONFIG.factory_size);
   switch (interaction_state.tag) {
@@ -752,8 +862,13 @@ function every_frame(cur_timestamp: number) {
     const out_str = resourcesToString(fac.recipe.outputs);
     ctx.textAlign = 'right';
     fillText(in_str, fac.pos.addX(-CONFIG.factory_size * 1.25));
+    fillText(fac.stored_input_items.map(x => x.name).join(''),
+      fac.pos.addXY(-CONFIG.factory_size * 1.25, -CONFIG.factory_size * 1.25));
+
     ctx.textAlign = 'left';
     fillText(out_str, fac.pos.addX(CONFIG.factory_size * 1.25));
+    fillText(fac.stored_output_items.map(x => x.name).join(''),
+      fac.pos.addXY(CONFIG.factory_size * 1.25, -CONFIG.factory_size * 1.25));
   })
 
   ctx.textAlign = 'center';
@@ -763,22 +878,22 @@ function every_frame(cur_timestamp: number) {
     edge.traffic.forEach(([amount, item]) => {
       if (amount === 0) return;
 
-      const global_time = cur_timestamp * .001 + edge_id;
-      const travel_time = item.transport_cost * dist / 100;
-      // intuition: 
-      //  element k is now at t = (global_time - k / amount) / travel_time;
-      //  draw only those between 0,1
-      // 0 = (global_time - k / amount) / travel_time
-      const k_0 = Math.ceil(global_time * amount);
-      // 1 = (global_time - k / amount) / travel_time
-      const k_1 = Math.floor((global_time - travel_time) * amount);
-      for (let k = k_1; k < k_0; k++) {
-        let asdf = (global_time - k / amount) / travel_time;
-        if (inRange(asdf, 0, 1)) {
-          const pos = Vec2.lerp(edge.source.pos, edge.target.pos, asdf);
-          fillText(item.name, pos);
-        }
-      }
+      // const global_time = cur_timestamp * .001 + edge_id;
+      // const travel_time = item.transport_cost * dist / 100;
+      // // intuition: 
+      // //  element k is now at t = (global_time - k / amount) / travel_time;
+      // //  draw only those between 0,1
+      // // 0 = (global_time - k / amount) / travel_time
+      // const k_0 = Math.ceil(global_time * amount);
+      // // 1 = (global_time - k / amount) / travel_time
+      // const k_1 = Math.floor((global_time - travel_time) * amount);
+      // for (let k = k_1; k < k_0; k++) {
+      //   let asdf = (global_time - k / amount) / travel_time;
+      //   if (inRange(asdf, 0, 1)) {
+      //     const pos = Vec2.lerp(edge.source.pos, edge.target.pos, asdf);
+      //     fillText(item.name, pos);
+      //   }
+      // }
 
       // if (item === items[1]) {
       //   console.log(t / travel_time)
@@ -809,6 +924,11 @@ function every_frame(cur_timestamp: number) {
       // const pos = Vec2.lerp(edge.source.pos, edge.target.pos, mod(.05 * cur_timestamp / (item.transport_cost * dist), 1));
       // fillText(item.name, pos);
     });
+  });
+
+  actual_items.forEach(item => {
+    const pos = Vec2.lerp(item.edge.source.pos, item.edge.target.pos, item.progress);
+    fillText(item.kind.name, pos);
   });
   // ctx.font = "20px Arial";
 
@@ -900,7 +1020,7 @@ if (import.meta.hot) {
     edges = import.meta.hot.data.edges;
     user_recipes = import.meta.hot.data.user_recipes;
     fixed_recipes = import.meta.hot.data.fixed_recipes;
-    items = import.meta.hot.data.items;
+    item_kinds = import.meta.hot.data.item_kinds;
   }
 
   import.meta.hot.accept();
@@ -914,7 +1034,7 @@ if (import.meta.hot) {
     data.edges = edges;
     data.user_recipes = user_recipes;
     data.fixed_recipes = fixed_recipes;
-    data.items = items;
+    data.item_kinds = item_kinds;
   })
 }
 
