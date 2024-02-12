@@ -148,7 +148,7 @@ gui.add(CONFIG, 'randomize_game');
 class ItemKind {
   constructor(
     public name: string,
-    // how long it takes to travel 10px
+    // how long it takes to travel 100px
     public transport_cost: number,
     public id: number,
   ) { }
@@ -163,7 +163,6 @@ class Recipe {
   constructor(
     public inputs: [number, ItemKind][],
     public outputs: [number, ItemKind][],
-    // how many seconds between getting the inputs & generating the outputs // not really
     public cost: number,
   ) { }
 
@@ -188,7 +187,7 @@ class Recipe {
 }
 
 class RealFactory {
-  // how many copies of the recipe are processed each second // not really
+  // how many copies of the recipe are processed each second
   public production: number = 0;
   constructor(
     public pos: Vec2,
@@ -212,7 +211,7 @@ class Edge {
   constructor(
     public source: Factory,
     public target: Factory,
-    // how many items arrive per second // not really
+    // how many items arrive per second
     public traffic: [number, ItemKind][] = [],
   ) { }
 
@@ -567,6 +566,7 @@ function every_frame(cur_timestamp: number) {
           factories.push(new_stub);
           edges.push(new Edge(new_stub, edge_to_split.target));
           edge_to_split.target = new_stub;
+          needs_recalc = true;
         }
       }
       break;
@@ -758,15 +758,44 @@ function every_frame(cur_timestamp: number) {
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  edges.forEach(edge => {
+  edges.forEach((edge, edge_id) => {
     const dist = edge.dist();
     edge.traffic.forEach(([amount, item]) => {
       if (amount === 0) return;
 
-      for (let k = 0; k < 3 * amount; k++) {
-        const pos = Vec2.lerp(edge.source.pos, edge.target.pos, mod(item.id / items.length + k / (3 * amount) + .05 * cur_timestamp / (item.transport_cost * dist), 1));
-        fillText(item.name, pos);
+      const global_time = cur_timestamp * .001 + edge_id;
+      const travel_time = item.transport_cost * dist / 100;
+      // intuition: 
+      //  element k is now at t = (global_time - k / amount) / travel_time;
+      //  draw only those between 0,1
+      // 0 = (global_time - k / amount) / travel_time
+      const k_0 = Math.ceil(global_time * amount);
+      // 1 = (global_time - k / amount) / travel_time
+      const k_1 = Math.floor((global_time - travel_time) * amount);
+      for (let k = k_1; k < k_0; k++) {
+        let asdf = (global_time - k / amount) / travel_time;
+        if (inRange(asdf, 0, 1)) {
+          const pos = Vec2.lerp(edge.source.pos, edge.target.pos, asdf);
+          fillText(item.name, pos);
+        }
       }
+
+      // if (item === items[1]) {
+      //   console.log(t / travel_time)
+      // }
+      // for (let k = 0; k < items_in_transit; k++) {
+      //   const pos = Vec2.lerp(edge.source.pos, edge.target.pos, 
+      //     mod(t / travel_time + k / items_in_transit, 1));
+      //   fillText(item.name, pos);
+
+      //   // const pos = Vec2.lerp(edge.source.pos, edge.target.pos, 
+      //   //   mod((.05 * cur_timestamp + k * 1000) / (item.transport_cost * dist), 1));
+      // }
+
+      // for (let k = 0; k < 3 * amount; k++) {
+      //   const pos = Vec2.lerp(edge.source.pos, edge.target.pos, mod(item.id / items.length + k / (3 * amount) + .05 * cur_timestamp / (item.transport_cost * dist), 1));
+      //   fillText(item.name, pos);
+      // }
 
       // const items_in_transit = amount * item.transport_cost * dist / 100;
       // // console.log(items_in_transit);
