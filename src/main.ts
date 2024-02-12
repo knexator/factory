@@ -551,7 +551,7 @@ function every_frame(cur_timestamp: number) {
         const new_stub = new StubFactory(cur_mouse_pos);
         factories.push(new_stub)
         interaction_state = { tag: 'making_rail', source: new_stub, target: null };
-      } else if (input.keyboard.wasPressed(KeyCode.ControlLeft)) {
+      } else if (input.keyboard.wasPressed(KeyCode.KeyD)) {
         interaction_state = { tag: 'deleting_edge', source: cur_mouse_pos };
       }
       break;
@@ -566,7 +566,7 @@ function every_frame(cur_timestamp: number) {
         interaction_state = { tag: 'moving_factory', factory: interaction_state.hovered_factory };
       } else if (input.keyboard.wasPressed(KeyCode.Space) && factory_under_mouse.recipe === 'stub') {
         interaction_state = { tag: 'specializing_stub', stub: interaction_state.hovered_factory, hovering_recipe: null };
-      } else if (input.keyboard.wasPressed(KeyCode.ControlLeft) && !interaction_state.hovered_factory.fixed) {
+      } else if (input.keyboard.wasPressed(KeyCode.KeyD) && !interaction_state.hovered_factory.fixed) {
         // delete factory
         const old_factory = interaction_state.hovered_factory;
         factories = factories.filter(f => f !== old_factory);
@@ -606,7 +606,7 @@ function every_frame(cur_timestamp: number) {
         if (interaction_state.target !== null) {
           edges.push(new Edge(interaction_state.source, interaction_state.target));
           needs_recalc = true;
-        } else if (factory_under_mouse === null) {
+        } else if (factory_under_mouse === undefined) {
           const new_stub = new StubFactory(cur_mouse_pos);
           factories.push(new_stub);
           edges.push(new Edge(interaction_state.source, new_stub));
@@ -680,7 +680,7 @@ function every_frame(cur_timestamp: number) {
         lineTo(e.target.pos);
       });
       ctx.stroke();
-      if (input.keyboard.wasReleased(KeyCode.ControlLeft)) {
+      if (input.keyboard.wasReleased(KeyCode.KeyD)) {
         edges = edges.filter(e => !crossing_edges.includes(e));
         needs_recalc = true;
         interaction_state = { tag: "none" };
