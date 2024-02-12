@@ -544,6 +544,10 @@ function every_frame(cur_timestamp: number) {
         interaction_state = { tag: 'hovering_factory', hovered_factory: factory_under_mouse };
       } else if (input.keyboard.wasPressed(KeyCode.KeyE)) {
         factories.push(new StubFactory(cur_mouse_pos));
+      } else if (input.mouse.wasPressed(MouseButton.Right)) {
+        const new_stub = new StubFactory(cur_mouse_pos);
+        factories.push(new_stub)
+        interaction_state = { tag: 'making_rail', source: new_stub, target: null };
       }
       break;
     case "hovering_factory":
