@@ -105,6 +105,7 @@ const rulesets: Record<string, Ruleset> = {
       [4, new Vec2(-1500, 0)],
       ...fromCount(5, k => [2, new Vec2(1500, -1000).add(Vec2.fromTurns(k / 5).scale(100))]) as [number, Vec2][],
       ...fromCount(5, k => [3, new Vec2(1500, 1000).add(Vec2.fromTurns(k / 5).scale(100))]) as [number, Vec2][],
+      ...fromCount(5, k => [4, new Vec2(2000, 0).add(Vec2.fromTurns(k / 5).scale(100))]) as [number, Vec2][],
     ]
   }
 }
