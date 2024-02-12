@@ -116,7 +116,9 @@ const CONFIG = {
   label_spacing: 40,
   auto_edges: false,
   editor_mode: false,
-  max_production: 3,
+  max_source_production: 2,
+  max_intermediate_production: 3,
+  max_final_production: 1,
   ruleset: "POTATO",
   randomize_start: () => randomizeMap(true),
   randomize_game: () => randomizeMap(false),
@@ -128,7 +130,9 @@ gui.add(CONFIG, "breathing_space_multiplier", 0, 5);
 gui.add(CONFIG, "label_spacing", 10, 50);
 gui.add(CONFIG, 'auto_edges');
 gui.add(CONFIG, 'editor_mode');
-gui.add(CONFIG, 'max_production', 1, 10);
+gui.add(CONFIG, 'max_source_production', 1, 10);
+gui.add(CONFIG, 'max_intermediate_production', 1, 10);
+gui.add(CONFIG, 'max_final_production', 1, 10);
 gui.add(CONFIG, 'ruleset', Object.keys(rulesets)).onChange((name: string) => {
   setRuleset(rulesets[name]);
 });
@@ -299,8 +303,7 @@ async function recalcMaxProfit() {
   const production_limits = real_factories.map((f, f_id) => ({
     name: `maxproduction_${f_id}`,
     vars: [{ name: `production_${f_id}`, coef: 1 }],
-    // bnds: { type: glpk.GLP_UP, ub: f.max_production, lb: 0 },
-    bnds: { type: glpk.GLP_DB, ub: fixed_recipes.includes(f.recipe) ? 1 : CONFIG.max_production, lb: 0 },
+    bnds: { type: glpk.GLP_DB, ub: f.recipe.inputs.length === 0 ? CONFIG.max_source_production : f.recipe.outputs.length === 0 ? CONFIG.max_final_production : CONFIG.max_intermediate_production, lb: 0 },
   }));
 
   const result = (await glpk.solve({
