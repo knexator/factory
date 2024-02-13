@@ -3,7 +3,7 @@ import GUI from "lil-gui";
 import { Grid2D } from "./kommon/grid2D";
 import { Input, KeyCode, Mouse, MouseButton } from "./kommon/input";
 import { DefaultMap, deepcopy, fromCount, fromRange, objectMap, repeat, zip2 } from "./kommon/kommon";
-import { mod, towards as approach, lerp, inRange, clamp, argmax, argmin, max, remap, clamp01, randomInt, randomFloat, randomChoice, doSegmentsIntersect, closestPointOnSegment } from "./kommon/math";
+import { mod, towards as approach, lerp, inRange, clamp, argmax, argmin, max, remap, clamp01, randomInt, randomFloat, randomChoice, doSegmentsIntersect, closestPointOnSegment, roundTo } from "./kommon/math";
 import { canvasFromAscii } from "./kommon/spritePS";
 import { initGL2, IVec, Vec2, Color, GenericDrawer, StatefulDrawer, CircleDrawer, m3, CustomSpriteDrawer, Transform, IRect, IColor, IVec2, FullscreenShader } from "kanvas2d"
 import GLPK from "glpk.js"
@@ -389,27 +389,21 @@ async function recalcMaxProfit() {
       const factory = real_factories[factory_id];
       // if (!factory) throw new Error(`falsy factory at id ${factory_id}, factories are ${factories}`);
       // if (factory.recipe === 'stub') throw new Error(`stub factory ${factory_id} has production ${value}`);
-      factory.production = value;
+      factory.production = roundTo(value, 7);
     } else if (name.startsWith('transport')) {
       const [_, edge_id, item_id] = name.split('_');
       const edge = edges[Number(edge_id)];
       const traffic_index = edge.traffic.findIndex(([_, item]) => item.id === Number(item_id));
-      edge.traffic[traffic_index][0] = value;
+      edge.traffic[traffic_index][0] = roundTo(value, 7);
     } else {
       throw new Error();
     }
   });
 }
 
-const background_drawer = new FullscreenShader(gl, `#version 300 es
-precision mediump float;
-in vec2 v_uv;
+// todo: zoom
 
-// uv (0.5, 0.5) => u_camera_pos
-// uv (0.0, 0.0) => u_camera_pos - u_camera_size / 2;
-uniform vec2 u_camera_pos;
-uniform vec2 u_camera_size;
-
+const simplex_noise_shader_functions = `
 /* discontinuous pseudorandom uniformly distributed in [-0.5, +0.5]^3 */
 vec3 random3(vec3 c) {
 	float j = 4096.0*sin(dot(c,vec3(17.0, 59.4, 15.0)));
@@ -471,12 +465,18 @@ float simplex3d(vec3 p) {
 	 
 	 /* 3. return the sum of the four surflets */
 	 return dot(d, vec4(52.0)) * .75;
-}
+}`;
 
-vec2 pong(vec2 value, float pong_value) {
-    vec2 v = mod(value, pong_value * 2.0);
-    return min(v, pong_value * 2.0 - v);
-}
+const background_drawer = new FullscreenShader(gl, `#version 300 es
+precision mediump float;
+in vec2 v_uv;
+
+// uv (0.5, 0.5) => u_camera_pos
+// uv (0.0, 0.0) => u_camera_pos - u_camera_size / 2;
+uniform vec2 u_camera_pos;
+uniform vec2 u_camera_size;
+
+${simplex_noise_shader_functions}
 
 out vec4 out_color;
 void main() {
@@ -488,7 +488,8 @@ void main() {
 `);
 
 // an object at [camera.center] will be drawn on the center of the screen
-let camera = { center: Vec2.zero };
+// an object at [camera.center.addX(scale)] will be drawn 1px to the right of that
+let camera = { center: Vec2.zero, scale: 1 };
 
 let interaction_state: {
   tag: 'none',
@@ -533,6 +534,7 @@ function every_frame(cur_timestamp: number) {
   ctx.textBaseline = 'top';
   fillText(`Profit: ${master_profit}`, Vec2.zero);
   ctx.translate(camera.center.x + canvas_ctx.width / 2, camera.center.y + canvas_ctx.height / 2);
+  ctx.scale(1 / camera.scale, 1 / camera.scale);
   ctx.textBaseline = 'middle';
 
   background_drawer.draw({
@@ -542,9 +544,20 @@ function every_frame(cur_timestamp: number) {
 
   // logic
   const rect = canvas_ctx.getBoundingClientRect();
-  const cur_mouse_pos = new Vec2(input.mouse.clientX - rect.left, input.mouse.clientY - rect.top).sub(camera.center).sub(new Vec2(canvas_ctx.width / 2, canvas_ctx.height / 2));
+  const raw_mouse_pos = new Vec2(input.mouse.clientX - rect.left, input.mouse.clientY - rect.top);
+  const cur_mouse_pos = raw_mouse_pos.sub(camera.center).sub(new Vec2(canvas_ctx.width / 2, canvas_ctx.height / 2)).scale(camera.scale);
   const delta_mouse = new Vec2(input.mouse.clientX - input.mouse.prev_clientX, input.mouse.clientY - input.mouse.prev_clientY);
   let needs_recalc = false;
+
+  if (input.mouse.wheel > 0) {
+    const delta = cur_mouse_pos.sub(camera.center);
+    camera.center = cur_mouse_pos.sub(delta.scale(1 / 1.1));
+    camera.scale *= 1.1;
+  } else if (input.mouse.wheel < 0) {
+    const delta = cur_mouse_pos.sub(camera.center);
+    camera.center = cur_mouse_pos.sub(delta.scale(1 * 1.1));
+    camera.scale /= 1.1;
+  }
 
   const factory_under_mouse = factories.find(f => f.pos.sub(cur_mouse_pos).magSq() < CONFIG.factory_size * CONFIG.factory_size);
   switch (interaction_state.tag) {
@@ -739,31 +752,6 @@ function every_frame(cur_timestamp: number) {
     ctx.strokeStyle = 'black';
   }
 
-  ctx.beginPath();
-  factories.forEach(fac => {
-    drawCircle(fac.pos, (fac.recipe === 'stub' ? .5 : 1) * CONFIG.factory_size);
-  })
-  ctx.stroke();
-
-  ctx.beginPath();
-  factories.forEach(fac => {
-    drawCircle(fac.pos, CONFIG.factory_size * (fac.recipe === 'stub' ? .5 : 1) * (
-      (interaction_state.tag === 'hovering_factory' && fac === interaction_state.hovered_factory
-        || interaction_state.tag === 'making_rail' && fac === interaction_state.target)
-        ? .8 : .5));
-  })
-  ctx.fill();
-
-  factories.forEach(fac => {
-    if (fac.recipe === 'stub') return;
-    const in_str = resourcesToString(fac.recipe.inputs);
-    const out_str = resourcesToString(fac.recipe.outputs);
-    ctx.textAlign = 'right';
-    fillText(in_str, fac.pos.addX(-CONFIG.factory_size * 1.25));
-    ctx.textAlign = 'left';
-    fillText(out_str, fac.pos.addX(CONFIG.factory_size * 1.25));
-  })
-
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   edges.forEach((edge, edge_id) => {
@@ -823,6 +811,41 @@ function every_frame(cur_timestamp: number) {
   // if (interaction_state.tag === 'hovering_factory' && interaction_state.hovered_factory.recipe !== recipes[0]) {
   //   ctx.fillText(interaction_state.hovered_factory.recipe.toString(), interaction_state.hovered_factory.pos.x + CONFIG.factory_size * 1.25, interaction_state.hovered_factory.pos.y);
   // }
+
+  factories.forEach(fac => {
+    ctx.fillStyle = (fac.recipe !== 'stub' &&
+      (fac.production === fac.max_production)
+      // // xor: is at max capacity ^ is a source/target
+      // (fac.production === fac.max_production) !== (fac.recipe.inputs.length === 0 || fac.recipe.outputs.length === 0)
+    ) ? '#FF5900' : '#7A7A7A';
+    ctx.beginPath();
+    drawCircle(fac.pos, (fac.recipe === 'stub' ? .5 : 1) * CONFIG.factory_size);
+    ctx.fill();
+    ctx.stroke();
+  })
+
+
+
+  ctx.fillStyle = 'black';
+  ctx.beginPath();
+  factories.forEach(fac => {
+    drawCircle(fac.pos, CONFIG.factory_size * (fac.recipe === 'stub' ? .5 : 1) * (
+      (interaction_state.tag === 'hovering_factory' && fac === interaction_state.hovered_factory
+        || interaction_state.tag === 'making_rail' && fac === interaction_state.target)
+        ? .8 : .5));
+  })
+  ctx.fill();
+
+  factories.forEach(fac => {
+    if (fac.recipe === 'stub') return;
+    const in_str = resourcesToString(fac.recipe.inputs);
+    const out_str = resourcesToString(fac.recipe.outputs);
+    ctx.textAlign = 'right';
+    fillText(in_str, fac.pos.addX(-CONFIG.factory_size * 1.25));
+    ctx.textAlign = 'left';
+    fillText(out_str, fac.pos.addX(CONFIG.factory_size * 1.25));
+  })
+
 
   if (interaction_state.tag === 'making_rail') {
     let target_pos = interaction_state.target?.pos ?? cur_mouse_pos;

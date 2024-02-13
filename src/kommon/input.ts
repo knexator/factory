@@ -229,6 +229,7 @@ export class Mouse {
     public clientX: number = 0;
     public clientY: number = 0;
     public buttons: number = 0;
+    public wheel: number = 0;
 
     public prev_clientX: number = 0;
     public prev_clientY: number = 0;
@@ -258,6 +259,9 @@ export class Mouse {
         this.clientX = this.mouse_listener.clientX;
         this.clientY = this.mouse_listener.clientY;
         this.buttons = this.mouse_listener.buttons;
+
+        this.wheel = this.mouse_listener.wheel;
+        this.mouse_listener.wheel = 0;
     }
 
     dispose() {

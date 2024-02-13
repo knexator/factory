@@ -17,6 +17,10 @@ export function rand05(): number {
     return Math.random() - .5;
 }
 
+export function roundTo(value: number, digits: number): number {
+    const asdf = Math.pow(10, digits);
+    return Math.round(value * asdf) / asdf;
+}
 
 export function max(arr: number[]) {
     if (arr.length === 0) {
