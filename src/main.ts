@@ -195,6 +195,14 @@ class RealFactory {
     public fixed: boolean,
     // public max_production: number,
   ) { }
+
+  public get max_production(): number {
+    return this.recipe.inputs.length === 0
+      ? CONFIG.max_source_production
+      : this.recipe.outputs.length === 0
+        ? CONFIG.max_final_production
+        : CONFIG.max_intermediate_production;
+  }
 }
 
 class StubFactory {
@@ -302,7 +310,7 @@ async function recalcMaxProfit() {
   const production_limits = real_factories.map((f, f_id) => ({
     name: `maxproduction_${f_id}`,
     vars: [{ name: `production_${f_id}`, coef: 1 }],
-    bnds: { type: glpk.GLP_DB, ub: f.recipe.inputs.length === 0 ? CONFIG.max_source_production : f.recipe.outputs.length === 0 ? CONFIG.max_final_production : CONFIG.max_intermediate_production, lb: 0 },
+    bnds: { type: glpk.GLP_DB, ub: f.max_production, lb: 0 },
   }));
 
   const result = (await glpk.solve({
