@@ -47,6 +47,7 @@ const rulesets: Record<string, Ruleset> = {
       ['🚂🧪', '🧪,🧪,🧪,🧪,🧪'],
     ],
     fixed_factories: [
+      [0, new Vec2(0, 0)],
       [0, new Vec2(300, 0)],
       [1, new Vec2(-500, -100)],
       [2, new Vec2(-500, 100)],
@@ -471,16 +472,17 @@ const background_drawer = new FullscreenShader(gl, `#version 300 es
 precision mediump float;
 in vec2 v_uv;
 
-// uv (0.5, 0.5) => u_camera_pos
-// uv (0.0, 0.0) => u_camera_pos - u_camera_size / 2;
-uniform vec2 u_camera_pos;
-uniform vec2 u_camera_size;
+// uv (0.5, 0.5) => u_camera_center
+// uv (0.0, 0.0) => u_camera_center - u_camera_scale / 2;
+uniform vec2 u_camera_center;
+uniform float u_camera_scale;
+uniform vec2 u_resolution;
 
 ${simplex_noise_shader_functions}
 
 out vec4 out_color;
 void main() {
-  vec2 world_pos = ((v_uv - .5) * u_camera_size * vec2(-1,1)) + u_camera_pos;
+  vec2 world_pos = ((v_uv - .5) * u_resolution * u_camera_scale * vec2(-1,1)) - u_camera_center;
   float noise = simplex3d(vec3(world_pos / 3000., .0));
   noise = floor(noise * 5.) / 5.;
   out_color = vec4(vec3(.5 + .1 * noise), 1.0);
@@ -533,29 +535,30 @@ function every_frame(cur_timestamp: number) {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   fillText(`Profit: ${master_profit}`, Vec2.zero);
-  ctx.translate(camera.center.x + canvas_ctx.width / 2, camera.center.y + canvas_ctx.height / 2);
   ctx.scale(1 / camera.scale, 1 / camera.scale);
+  ctx.translate(-camera.center.x + camera.scale * canvas_ctx.width / 2, -camera.center.y + camera.scale * canvas_ctx.height / 2);
   ctx.textBaseline = 'middle';
 
   background_drawer.draw({
-    u_camera_pos: camera.center.toArray(),
-    u_camera_size: [canvas_gl.width, canvas_gl.height],
+    u_camera_center: camera.center.toArray(),
+    u_camera_scale: camera.scale,
+    u_resolution: [canvas_gl.width, canvas_gl.height],
   });
 
   // logic
   const rect = canvas_ctx.getBoundingClientRect();
-  const raw_mouse_pos = new Vec2(input.mouse.clientX - rect.left, input.mouse.clientY - rect.top);
-  const cur_mouse_pos = raw_mouse_pos.sub(camera.center).sub(new Vec2(canvas_ctx.width / 2, canvas_ctx.height / 2)).scale(camera.scale);
-  const delta_mouse = new Vec2(input.mouse.clientX - input.mouse.prev_clientX, input.mouse.clientY - input.mouse.prev_clientY);
+  const raw_mouse_pos = new Vec2(input.mouse.clientX - rect.left, input.mouse.clientY - rect.top).sub(new Vec2(canvas_ctx.width / 2, canvas_ctx.height/ 2 ));
+  const cur_mouse_pos = raw_mouse_pos.scale(camera.scale).add(camera.center);
+  const delta_mouse = new Vec2(input.mouse.clientX - input.mouse.prev_clientX, input.mouse.clientY - input.mouse.prev_clientY).scale(camera.scale);
   let needs_recalc = false;
 
   if (input.mouse.wheel > 0) {
-    const delta = cur_mouse_pos.sub(camera.center);
-    camera.center = cur_mouse_pos.sub(delta.scale(1 / 1.1));
+    const delta = camera.center.sub(cur_mouse_pos);
+    camera.center = cur_mouse_pos.add(delta.scale(1* 1.1));
     camera.scale *= 1.1;
   } else if (input.mouse.wheel < 0) {
-    const delta = cur_mouse_pos.sub(camera.center);
-    camera.center = cur_mouse_pos.sub(delta.scale(1 * 1.1));
+    const delta = camera.center.sub(cur_mouse_pos);
+    camera.center = cur_mouse_pos.add(delta.scale(1 / 1.1));
     camera.scale /= 1.1;
   }
 
@@ -564,7 +567,7 @@ function every_frame(cur_timestamp: number) {
     case 'none':
       if (input.mouse.isDown(MouseButton.Left) && !input.mouse.wasPressed(MouseButton.Left)) {
         // drag view with left mouse
-        camera.center = camera.center.add(delta_mouse);
+        camera.center = camera.center.sub(delta_mouse);
       } else if (factory_under_mouse) {
         // hover
         interaction_state = { tag: 'hovering_factory', hovered_factory: factory_under_mouse };
