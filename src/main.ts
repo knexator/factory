@@ -208,6 +208,8 @@ class RealFactory {
 class StubFactory {
   public recipe: 'stub' = 'stub';
   public fixed: boolean = false;
+  public possible_inputs: ItemKind[] = [];
+  public possible_outputs: ItemKind[] = [];
   constructor(
     public pos: Vec2,
   ) { }
@@ -306,6 +308,37 @@ async function recalcMaxProfit() {
     f.production = 0;
   });
   const stub_factories: StubFactory[] = factories.filter(x => x.recipe === 'stub') as StubFactory[];
+
+  {
+    stub_factories.forEach(f => {
+      f.possible_inputs = [];
+      f.possible_outputs = [];
+    });
+    let any_changes = true;
+    while (any_changes) {
+      any_changes = false;
+      for (const edge of edges) {
+        if (edge.target.recipe === 'stub') {
+          const provided_inputs = edge.source.recipe === 'stub' ? edge.source.possible_inputs : edge.source.recipe.outputs.map(([_,i]) => i);
+          for (const i of provided_inputs) {
+            if (!edge.target.possible_inputs.includes(i)) {
+              edge.target.possible_inputs.push(i);
+              any_changes = true;
+            } 
+          }
+        }
+        if (edge.source.recipe === 'stub') {
+          const provided_outputs = edge.target.recipe === 'stub' ? edge.target.possible_outputs : edge.target.recipe.inputs.map(([_,i]) => i);
+          for (const i of provided_outputs) {
+            if (!edge.source.possible_outputs.includes(i)) {
+              edge.source.possible_outputs.push(i);
+              any_changes = true;
+            } 
+          }
+        }
+      }
+    }
+  }
 
   const production_limits = real_factories.map((f, f_id) => ({
     name: `maxproduction_${f_id}`,
@@ -546,14 +579,14 @@ function every_frame(cur_timestamp: number) {
 
   // logic
   const rect = canvas_ctx.getBoundingClientRect();
-  const raw_mouse_pos = new Vec2(input.mouse.clientX - rect.left, input.mouse.clientY - rect.top).sub(new Vec2(canvas_ctx.width / 2, canvas_ctx.height/ 2 ));
+  const raw_mouse_pos = new Vec2(input.mouse.clientX - rect.left, input.mouse.clientY - rect.top).sub(new Vec2(canvas_ctx.width / 2, canvas_ctx.height / 2));
   const cur_mouse_pos = raw_mouse_pos.scale(camera.scale).add(camera.center);
   const delta_mouse = new Vec2(input.mouse.clientX - input.mouse.prev_clientX, input.mouse.clientY - input.mouse.prev_clientY).scale(camera.scale);
   let needs_recalc = false;
 
   if (input.mouse.wheel > 0) {
     const delta = camera.center.sub(cur_mouse_pos);
-    camera.center = cur_mouse_pos.add(delta.scale(1* 1.1));
+    camera.center = cur_mouse_pos.add(delta.scale(1 * 1.1));
     camera.scale *= 1.1;
   } else if (input.mouse.wheel < 0) {
     const delta = camera.center.sub(cur_mouse_pos);
@@ -656,15 +689,13 @@ function every_frame(cur_timestamp: number) {
     case "specializing_stub":
       interaction_state.hovering_recipe = null;
       const stub = interaction_state.stub;
-      const inbound_items = (edges.filter(e => e.target === stub).map(x => x.source)
-        .filter(f => f.recipe !== 'stub') as RealFactory[]).flatMap(f => f.recipe.outputs.map(([_, item]) => item));
-      const outbound_items = (edges.filter(e => e.source === stub).map(x => x.target)
-        .filter(f => f.recipe !== 'stub') as RealFactory[]).flatMap(f => f.recipe.inputs.map(([_, item]) => item));
+      if (stub.recipe !== 'stub') throw new Error();
       (CONFIG.editor_mode ? [...fixed_recipes, ...user_recipes] : user_recipes).filter(recipe => {
-        return recipe.inputs.some(([_, item]) => inbound_items.includes(item))
-          || recipe.outputs.some(([_, item]) => outbound_items.includes(item));
+        return recipe.inputs.some(([_, item]) => stub.possible_inputs.includes(item))
+          || recipe.outputs.some(([_, item]) => stub.possible_outputs.includes(item));
       }).forEach((recipe, k) => {
         if (interaction_state.tag !== 'specializing_stub') throw new Error();
+        k += 1;
         const selected = inRange((cur_mouse_pos.y - interaction_state.stub.pos.y) / CONFIG.label_spacing, k - .5, k + .5);
         {
           const in_str = resourcesToString(recipe.inputs);
