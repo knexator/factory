@@ -47,7 +47,6 @@ const rulesets: Record<string, Ruleset> = {
       ['🚂🧪', '🧪,🧪,🧪,🧪,🧪'],
     ],
     fixed_factories: [
-      [0, new Vec2(0, 0)],
       [0, new Vec2(300, 0)],
       [1, new Vec2(-500, -100)],
       [2, new Vec2(-500, 100)],
