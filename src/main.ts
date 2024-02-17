@@ -198,6 +198,10 @@ class RealFactory {
     // public max_production: number,
   ) { }
 
+  public get construction_cost(): number {
+    return 1000;
+  }
+
   public get max_production(): number {
     return this.recipe.inputs.length === 0
       ? CONFIG.max_source_production
@@ -231,6 +235,10 @@ class Edge {
 
   dist(): number {
     return this.source.pos.sub(this.target.pos).mag();
+  }
+
+  public get cost_per_pixel(): number {
+    return 1;
   }
 }
 
@@ -443,7 +451,7 @@ async function recalcMaxProfit() {
     } else if (name.startsWith('transport')) {
       const [_, edge_id, item_id] = name.split('_');
       const edge = edges[Number(edge_id)];
-      edge.traffic.push([roundTo(value, 7), items.find(x => x.id ===  Number(item_id))!]);
+      edge.traffic.push([roundTo(value, 7), items.find(x => x.id === Number(item_id))!]);
     } else {
       throw new Error();
     }
@@ -474,9 +482,9 @@ async function recalcMaxProfitWithConstructionCosts() {
         })),
 
         // construction costs
-        ...real_factories.map((_f, f_id) => ({ name: `builtfactory_${f_id}`, coef: -1000 })),
+        ...real_factories.map((f, f_id) => ({ name: `builtfactory_${f_id}`, coef: -f.construction_cost })),
         ...edges.flatMap((e, edge_id) => {
-          return { name: `builtedge_${edge_id}`, coef: -e.dist() * 1 };
+          return { name: `builtedge_${edge_id}`, coef: -e.dist() * e.cost_per_pixel };
         }),
       ],
     },
@@ -485,7 +493,7 @@ async function recalcMaxProfitWithConstructionCosts() {
       ...real_factories.map((f, f_id) => {
         return {
           name: `binfactory_${f_id}`,
-          vars: [{ name: `production_${f_id}`, coef: -1 }, { name: `builtfactory_${f_id}`, coef: 100 }],
+          vars: [{ name: `production_${f_id}`, coef: -1 }, { name: `builtfactory_${f_id}`, coef: 10000 }],
           bnds: { type: glpk.GLP_LO, ub: 0, lb: 0 }
         }
       }),
@@ -493,7 +501,7 @@ async function recalcMaxProfitWithConstructionCosts() {
         return {
           name: `binedge_${edge_id}`,
           vars: [
-            { name: `builtedge_${edge_id}`, coef: 100 },
+            { name: `builtedge_${edge_id}`, coef: 10000 },
             ...edge.possible_items.map(item => {
               return { name: `transport_${edge_id}_${item.id}`, coef: -1 };
             })
@@ -575,7 +583,7 @@ async function recalcMaxProfitWithConstructionCosts() {
     } else if (name.startsWith('transport')) {
       const [_, edge_id, item_id] = name.split('_');
       const edge = edges[Number(edge_id)];
-      edge.traffic.push([roundTo(value, 7), items.find(x => x.id ===  Number(item_id))!]);
+      edge.traffic.push([roundTo(value, 7), items.find(x => x.id === Number(item_id))!]);
     } else if (name.startsWith('builtedge')) {
     } else if (name.startsWith('builtfactory')) {
     } else {
