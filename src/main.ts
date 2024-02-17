@@ -284,7 +284,7 @@ function randomizeMap(only_fixed: boolean): void {
 
 let master_profit = 0;
 async function recalcEdgeWeightsAndFactoryProductions() {
-  CONFIG.construction_costs ? recalcMaxProfit() : recalcMaxProfitWithConstructionCosts();
+  CONFIG.construction_costs ? recalcMaxProfitWithConstructionCosts() : recalcMaxProfit();
 }
 
 async function recalcMaxProfit() {
@@ -506,13 +506,41 @@ async function recalcMaxProfitWithConstructionCosts() {
       direction: glpk.GLP_MAX,
       name: "profit",
       vars: [
+        // operation costs
         ...real_factories.map((f, f_id) => ({ name: `production_${f_id}`, coef: -f.recipe.cost })),
         ...edges.flatMap((e, edge_id) => e.traffic.map(([_, item]) => {
           return { name: `transport_${edge_id}_${item.id}`, coef: -e.dist() * item.transport_cost };
-        }))
+        })),
+
+        // construction costs
+        ...real_factories.map((_f, f_id) => ({ name: `builtfactory_${f_id}`, coef: -1000 })),
+        ...edges.flatMap((e, edge_id) => {
+          return { name: `builtedge_${edge_id}`, coef: -e.dist() * 1 };
+        }),
       ],
     },
     subjectTo: [
+      // ensure binary
+      ...real_factories.map((f, f_id) => {
+        return {
+          name: `binfactory_${f_id}`,
+          vars: [{ name: `production_${f_id}`, coef: -1 }, { name: `builtfactory_${f_id}`, coef: 100 }],
+          bnds: { type: glpk.GLP_LO, ub: 0, lb: 0 }
+        }
+      }),
+      ...edges.map((edge, edge_id) => {
+        return {
+          name: `binedge_${edge_id}`,
+          vars: [
+            { name: `builtedge_${edge_id}`, coef: 100 },
+            ...edge.traffic.map(([_, item]) => {
+              return { name: `transport_${edge_id}_${item.id}`, coef: -1 };
+            })
+          ],
+          bnds: { type: glpk.GLP_LO, ub: 0, lb: 0 }
+        }
+      }),
+      // ensure in-out balances
       ...real_factories.flatMap((f, f_id) => {
         return f.recipe.inputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
@@ -524,8 +552,7 @@ async function recalcMaxProfitWithConstructionCosts() {
 
           return {
             name: `balancein_${f_id}_${item.id}`,
-            vars: [{ name: `production_${f_id}`, coef: -amount },
-            ...asdf],
+            vars: [{ name: `production_${f_id}`, coef: -amount }, ...asdf],
             bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
           }
         })
@@ -567,9 +594,13 @@ async function recalcMaxProfitWithConstructionCosts() {
       })
     ],
     bounds: production_limits,
-    binaries: [],
+    binaries: [
+      ...real_factories.map((_f, f_id) => `builtfactory_${f_id}`),
+      ...edges.flatMap((e, edge_id) => `builtedge_${edge_id}`),
+    ],
   })).result;
 
+  console.log(result.vars);
   master_profit = result.z;
   Object.entries(result.vars).forEach(([name, value]) => {
     if (name.startsWith('production')) {
@@ -583,6 +614,8 @@ async function recalcMaxProfitWithConstructionCosts() {
       const edge = edges[Number(edge_id)];
       const traffic_index = edge.traffic.findIndex(([_, item]) => item.id === Number(item_id));
       edge.traffic[traffic_index][0] = roundTo(value, 7);
+    } else if (name.startsWith('builtedge')) {
+    } else if (name.startsWith('builtfactory')) {
     } else {
       throw new Error();
     }
