@@ -116,7 +116,7 @@ const CONFIG = {
   label_spacing: 40,
   auto_edges: false,
   editor_mode: false,
-  construction_costs: true,
+  construction_costs: false,
   max_source_production: 2,
   max_intermediate_production: 3,
   max_final_production: 1,
@@ -600,7 +600,6 @@ async function recalcMaxProfitWithConstructionCosts() {
     ],
   })).result;
 
-  console.log(result.vars);
   master_profit = result.z;
   Object.entries(result.vars).forEach(([name, value]) => {
     if (name.startsWith('production')) {
