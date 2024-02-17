@@ -789,10 +789,10 @@ function every_frame(cur_timestamp: number) {
   ctx.textBaseline = 'middle';
   edges.forEach((edge, edge_id) => {
     const dist = edge.dist();
-    edge.traffic.forEach(([amount, item]) => {
+    edge.traffic.forEach(([amount, item], edge_item_k) => {
       if (amount === 0) return;
 
-      const global_time = cur_timestamp * .001 + edge_id;
+      const global_time = cur_timestamp * .001 + edge_id / edges.length + edge_item_k / edge.traffic.length;
       const travel_time = item.transport_cost * dist / 100;
       // intuition: 
       //  element k is now at t = (global_time - k / amount) / travel_time;
