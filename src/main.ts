@@ -107,6 +107,28 @@ const rulesets: Record<string, Ruleset> = {
       ...fromCount(5, k => [3, new Vec2(1500, 1000).add(Vec2.fromTurns(k / 5).scale(100))]) as [number, Vec2][],
       ...fromCount(5, k => [4, new Vec2(2000, 0).add(Vec2.fromTurns(k / 5).scale(100))]) as [number, Vec2][],
     ]
+  },
+  ROAD_NETWORK: {
+    items: [
+      ['🔴', 2],
+      ['🟢', 2],
+    ],
+    fixed_recipes: [
+      ['', '🔴'],
+      ['🟢', ''],
+    ],
+    user_recipes: [
+      ['🔴', '🟢'],
+    ],
+    fixed_factories: [
+      // distributed sources, concentrated targets
+      ...fromCount(20, _ => [0, Vec2.fromTurns(Math.random()).scale(Math.sqrt(Math.random()) * 2000)] as [number, Vec2]),
+      ...fromCount(10, _ => [1, Vec2.fromTurns(Math.random()).scale(Math.sqrt(Math.random()) * 200).addX(500)] as [number, Vec2]),
+      ...fromCount(10, _ => [1, Vec2.fromTurns(Math.random()).scale(Math.sqrt(Math.random()) * 500).addX(-500)] as [number, Vec2]),
+
+      // ...fromCount(10, k => [0, new Vec2(k * 200, -1200)] as [number, Vec2]),
+      // ...fromCount(10, k => [1, new Vec2(k * 200, 1200)] as [number, Vec2]),
+    ]
   }
 }
 
@@ -277,13 +299,14 @@ function commonItems(source: Factory, target: Factory): ItemKind[] {
 setRuleset(rulesets[CONFIG.ruleset]);
 
 function randomizeMap(only_fixed: boolean): void {
+  factories = [];
   if (only_fixed) {
     fromCount(3 * fixed_recipes.length, _ => {
-      factories.push(new RealFactory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), fixed_recipes[randomInt(1, fixed_recipes.length)], true));
+      factories.push(new RealFactory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), randomChoice(fixed_recipes), true));
     });
   } else {
     fromCount(3 * fixed_recipes.length, _ => {
-      factories.push(new RealFactory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), fixed_recipes[randomInt(1, fixed_recipes.length)], true));
+      factories.push(new RealFactory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), randomChoice(fixed_recipes), true));
     });
     fromCount(3 * user_recipes.length, _ => {
       factories.push(new RealFactory(Vec2.fromTurns(Math.random()).scale(randomFloat(400, 2000)), randomChoice(user_recipes), false));
@@ -293,8 +316,16 @@ function randomizeMap(only_fixed: boolean): void {
 }
 
 let master_profit = 0;
+let calculating = false;
 async function recalcEdgeWeightsAndFactoryProductions() {
-  CONFIG.construction_costs ? recalcMaxProfitWithConstructionCosts() : recalcMaxProfit();
+  if (calculating) return;
+  calculating = true
+  if (CONFIG.construction_costs) {
+    await recalcMaxProfitWithConstructionCosts();
+  } else {
+    await recalcMaxProfit();
+  }
+  calculating = false
 }
 
 function recalcEdges() {
@@ -321,9 +352,6 @@ function recalcEdges() {
 
 function recalcFactories(): [RealFactory[], StubFactory[]] {
   const real_factories: RealFactory[] = factories.filter(x => x.recipe !== 'stub') as RealFactory[];
-  real_factories.forEach(f => {
-    f.production = 0;
-  });
   const stub_factories: StubFactory[] = factories.filter(x => x.recipe === 'stub') as StubFactory[];
   stub_factories.forEach(f => {
     f.possible_inputs = [];
@@ -1015,8 +1043,6 @@ function every_frame(cur_timestamp: number) {
     ctx.stroke();
   })
 
-
-
   ctx.fillStyle = 'black';
   ctx.beginPath();
   factories.forEach(fac => {
@@ -1053,6 +1079,12 @@ function every_frame(cur_timestamp: number) {
   }
 
   // debug
+  if (input.keyboard.wasPressed(KeyCode.KeyR)) {
+    recalcEdgeWeightsAndFactoryProductions();
+  }
+  if (input.keyboard.wasPressed(KeyCode.KeyT)) {
+    calculating = false;
+  }
   if (input.keyboard.wasPressed(KeyCode.Space)) {
     factories.forEach((f, k) => {
       if (f.recipe === 'stub') {
