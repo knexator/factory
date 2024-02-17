@@ -360,7 +360,6 @@ async function recalcMaxProfit() {
       ],
     },
     subjectTo: [
-      // ...production_limits,
       ...real_factories.flatMap((f, f_id) => {
         return f.recipe.inputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
