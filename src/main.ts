@@ -220,11 +220,13 @@ class StubFactory {
 type Factory = RealFactory | StubFactory;
 
 class Edge {
+  // how many items arrive per second
+  public traffic: [number, ItemKind][] = [];
+  public possible_items: ItemKind[] = [];
+
   constructor(
     public source: Factory,
     public target: Factory,
-    // how many items arrive per second
-    public traffic: [number, ItemKind][] = [],
   ) { }
 
   dist(): number {
@@ -287,7 +289,7 @@ async function recalcEdgeWeightsAndFactoryProductions() {
   CONFIG.construction_costs ? recalcMaxProfitWithConstructionCosts() : recalcMaxProfit();
 }
 
-async function recalcMaxProfit() {
+function recalcEdges() {
   if (CONFIG.auto_edges) {
     edges = [];
     factories.forEach(source => {
@@ -295,52 +297,60 @@ async function recalcMaxProfit() {
         if (source === target) return;
         const common = commonItems(source, target);
         if (common.length > 0) {
-          edges.push(new Edge(source, target, common.map(c => [0, c])));
+          const cur_edge = new Edge(source, target);
+          cur_edge.possible_items = common;
+          edges.push(cur_edge);
         }
       });
     });
   } else {
     edges.forEach(edge => {
       const common = commonItems(edge.source, edge.target);
-      edge.traffic = common.map(item => [0, item]);
+      edge.possible_items = common;
     });
   }
+}
+
+function recalcFactories(): [RealFactory[], StubFactory[]] {
   const real_factories: RealFactory[] = factories.filter(x => x.recipe !== 'stub') as RealFactory[];
   real_factories.forEach(f => {
     f.production = 0;
   });
   const stub_factories: StubFactory[] = factories.filter(x => x.recipe === 'stub') as StubFactory[];
-
-  {
-    stub_factories.forEach(f => {
-      f.possible_inputs = [];
-      f.possible_outputs = [];
-    });
-    let any_changes = true;
-    while (any_changes) {
-      any_changes = false;
-      for (const edge of edges) {
-        if (edge.target.recipe === 'stub') {
-          const provided_inputs = edge.source.recipe === 'stub' ? edge.source.possible_inputs : edge.source.recipe.outputs.map(([_, i]) => i);
-          for (const i of provided_inputs) {
-            if (!edge.target.possible_inputs.includes(i)) {
-              edge.target.possible_inputs.push(i);
-              any_changes = true;
-            }
+  stub_factories.forEach(f => {
+    f.possible_inputs = [];
+    f.possible_outputs = [];
+  });
+  let any_changes = true;
+  while (any_changes) {
+    any_changes = false;
+    for (const edge of edges) {
+      if (edge.target.recipe === 'stub') {
+        const provided_inputs = edge.source.recipe === 'stub' ? edge.source.possible_inputs : edge.source.recipe.outputs.map(([_, i]) => i);
+        for (const i of provided_inputs) {
+          if (!edge.target.possible_inputs.includes(i)) {
+            edge.target.possible_inputs.push(i);
+            any_changes = true;
           }
         }
-        if (edge.source.recipe === 'stub') {
-          const provided_outputs = edge.target.recipe === 'stub' ? edge.target.possible_outputs : edge.target.recipe.inputs.map(([_, i]) => i);
-          for (const i of provided_outputs) {
-            if (!edge.source.possible_outputs.includes(i)) {
-              edge.source.possible_outputs.push(i);
-              any_changes = true;
-            }
+      }
+      if (edge.source.recipe === 'stub') {
+        const provided_outputs = edge.target.recipe === 'stub' ? edge.target.possible_outputs : edge.target.recipe.inputs.map(([_, i]) => i);
+        for (const i of provided_outputs) {
+          if (!edge.source.possible_outputs.includes(i)) {
+            edge.source.possible_outputs.push(i);
+            any_changes = true;
           }
         }
       }
     }
   }
+  return [real_factories, stub_factories];
+}
+
+async function recalcMaxProfit() {
+  recalcEdges();
+  const [real_factories, stub_factories] = recalcFactories();
 
   const production_limits = real_factories.map((f, f_id) => ({
     name: `production_${f_id}`,
@@ -356,7 +366,7 @@ async function recalcMaxProfit() {
       name: "profit",
       vars: [
         ...real_factories.map((f, f_id) => ({ name: `production_${f_id}`, coef: -f.recipe.cost })),
-        ...edges.flatMap((e, edge_id) => e.traffic.map(([_, item]) => {
+        ...edges.flatMap((e, edge_id) => e.possible_items.map(item => {
           return { name: `transport_${edge_id}_${item.id}`, coef: -e.dist() * item.transport_cost };
         }))
       ],
@@ -366,7 +376,7 @@ async function recalcMaxProfit() {
         return f.recipe.inputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
-            if (e.target === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+            if (e.target === f && e.possible_items.some(edge_item => edge_item === item)) {
               asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
             }
           });
@@ -383,7 +393,7 @@ async function recalcMaxProfit() {
         return f.recipe.outputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
-            if (e.source === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+            if (e.source === f && e.possible_items.some(edge_item => edge_item === item)) {
               asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
             }
           });
@@ -400,10 +410,10 @@ async function recalcMaxProfit() {
         return items.map(item => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
-            if (e.source === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+            if (e.source === f && e.possible_items.some(edge_item => edge_item === item)) {
               asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: -1 });
             }
-            if (e.target === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+            if (e.target === f && e.possible_items.some(edge_item => edge_item === item)) {
               asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
             }
           });
@@ -420,6 +430,9 @@ async function recalcMaxProfit() {
   })).result;
 
   master_profit = result.z;
+  edges.forEach(e => {
+    e.traffic = [];
+  })
   Object.entries(result.vars).forEach(([name, value]) => {
     if (name.startsWith('production')) {
       const factory_id = Number(name.split('_')[1]);
@@ -430,8 +443,7 @@ async function recalcMaxProfit() {
     } else if (name.startsWith('transport')) {
       const [_, edge_id, item_id] = name.split('_');
       const edge = edges[Number(edge_id)];
-      const traffic_index = edge.traffic.findIndex(([_, item]) => item.id === Number(item_id));
-      edge.traffic[traffic_index][0] = roundTo(value, 7);
+      edge.traffic.push([roundTo(value, 7), items.find(x => x.id ===  Number(item_id))!]);
     } else {
       throw new Error();
     }
@@ -439,59 +451,8 @@ async function recalcMaxProfit() {
 }
 
 async function recalcMaxProfitWithConstructionCosts() {
-  if (CONFIG.auto_edges) {
-    edges = [];
-    factories.forEach(source => {
-      factories.forEach(target => {
-        if (source === target) return;
-        const common = commonItems(source, target);
-        if (common.length > 0) {
-          edges.push(new Edge(source, target, common.map(c => [0, c])));
-        }
-      });
-    });
-  } else {
-    edges.forEach(edge => {
-      const common = commonItems(edge.source, edge.target);
-      edge.traffic = common.map(item => [0, item]);
-    });
-  }
-  const real_factories: RealFactory[] = factories.filter(x => x.recipe !== 'stub') as RealFactory[];
-  real_factories.forEach(f => {
-    f.production = 0;
-  });
-  const stub_factories: StubFactory[] = factories.filter(x => x.recipe === 'stub') as StubFactory[];
-
-  {
-    stub_factories.forEach(f => {
-      f.possible_inputs = [];
-      f.possible_outputs = [];
-    });
-    let any_changes = true;
-    while (any_changes) {
-      any_changes = false;
-      for (const edge of edges) {
-        if (edge.target.recipe === 'stub') {
-          const provided_inputs = edge.source.recipe === 'stub' ? edge.source.possible_inputs : edge.source.recipe.outputs.map(([_, i]) => i);
-          for (const i of provided_inputs) {
-            if (!edge.target.possible_inputs.includes(i)) {
-              edge.target.possible_inputs.push(i);
-              any_changes = true;
-            }
-          }
-        }
-        if (edge.source.recipe === 'stub') {
-          const provided_outputs = edge.target.recipe === 'stub' ? edge.target.possible_outputs : edge.target.recipe.inputs.map(([_, i]) => i);
-          for (const i of provided_outputs) {
-            if (!edge.source.possible_outputs.includes(i)) {
-              edge.source.possible_outputs.push(i);
-              any_changes = true;
-            }
-          }
-        }
-      }
-    }
-  }
+  recalcEdges();
+  const [real_factories, stub_factories] = recalcFactories();
 
   const production_limits = real_factories.map((f, f_id) => ({
     name: `production_${f_id}`,
@@ -508,7 +469,7 @@ async function recalcMaxProfitWithConstructionCosts() {
       vars: [
         // operation costs
         ...real_factories.map((f, f_id) => ({ name: `production_${f_id}`, coef: -f.recipe.cost })),
-        ...edges.flatMap((e, edge_id) => e.traffic.map(([_, item]) => {
+        ...edges.flatMap((e, edge_id) => e.possible_items.map(item => {
           return { name: `transport_${edge_id}_${item.id}`, coef: -e.dist() * item.transport_cost };
         })),
 
@@ -533,7 +494,7 @@ async function recalcMaxProfitWithConstructionCosts() {
           name: `binedge_${edge_id}`,
           vars: [
             { name: `builtedge_${edge_id}`, coef: 100 },
-            ...edge.traffic.map(([_, item]) => {
+            ...edge.possible_items.map(item => {
               return { name: `transport_${edge_id}_${item.id}`, coef: -1 };
             })
           ],
@@ -545,7 +506,7 @@ async function recalcMaxProfitWithConstructionCosts() {
         return f.recipe.inputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
-            if (e.target === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+            if (e.target === f && e.possible_items.some(edge_item => edge_item === item)) {
               asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
             }
           });
@@ -561,7 +522,7 @@ async function recalcMaxProfitWithConstructionCosts() {
         return f.recipe.outputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
-            if (e.source === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+            if (e.source === f && e.possible_items.some(edge_item => edge_item === item)) {
               asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
             }
           });
@@ -578,10 +539,10 @@ async function recalcMaxProfitWithConstructionCosts() {
         return items.map(item => {
           let asdf: { name: string, coef: number }[] = [];
           edges.forEach((e, edge_id) => {
-            if (e.source === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+            if (e.source === f && e.possible_items.some(edge_item => edge_item === item)) {
               asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: -1 });
             }
-            if (e.target === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+            if (e.target === f && e.possible_items.some(edge_item => edge_item === item)) {
               asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
             }
           });
@@ -601,6 +562,9 @@ async function recalcMaxProfitWithConstructionCosts() {
   })).result;
 
   master_profit = result.z;
+  edges.forEach(e => {
+    e.traffic = [];
+  })
   Object.entries(result.vars).forEach(([name, value]) => {
     if (name.startsWith('production')) {
       const factory_id = Number(name.split('_')[1]);
@@ -611,8 +575,7 @@ async function recalcMaxProfitWithConstructionCosts() {
     } else if (name.startsWith('transport')) {
       const [_, edge_id, item_id] = name.split('_');
       const edge = edges[Number(edge_id)];
-      const traffic_index = edge.traffic.findIndex(([_, item]) => item.id === Number(item_id));
-      edge.traffic[traffic_index][0] = roundTo(value, 7);
+      edge.traffic.push([roundTo(value, 7), items.find(x => x.id ===  Number(item_id))!]);
     } else if (name.startsWith('builtedge')) {
     } else if (name.startsWith('builtfactory')) {
     } else {
