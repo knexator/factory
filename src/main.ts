@@ -319,21 +319,21 @@ async function recalcMaxProfit() {
       any_changes = false;
       for (const edge of edges) {
         if (edge.target.recipe === 'stub') {
-          const provided_inputs = edge.source.recipe === 'stub' ? edge.source.possible_inputs : edge.source.recipe.outputs.map(([_,i]) => i);
+          const provided_inputs = edge.source.recipe === 'stub' ? edge.source.possible_inputs : edge.source.recipe.outputs.map(([_, i]) => i);
           for (const i of provided_inputs) {
             if (!edge.target.possible_inputs.includes(i)) {
               edge.target.possible_inputs.push(i);
               any_changes = true;
-            } 
+            }
           }
         }
         if (edge.source.recipe === 'stub') {
-          const provided_outputs = edge.target.recipe === 'stub' ? edge.target.possible_outputs : edge.target.recipe.inputs.map(([_,i]) => i);
+          const provided_outputs = edge.target.recipe === 'stub' ? edge.target.possible_outputs : edge.target.recipe.inputs.map(([_, i]) => i);
           for (const i of provided_outputs) {
             if (!edge.source.possible_outputs.includes(i)) {
               edge.source.possible_outputs.push(i);
               any_changes = true;
-            } 
+            }
           }
         }
       }
@@ -341,9 +341,10 @@ async function recalcMaxProfit() {
   }
 
   const production_limits = real_factories.map((f, f_id) => ({
-    name: `maxproduction_${f_id}`,
-    vars: [{ name: `production_${f_id}`, coef: 1 }],
-    bnds: { type: glpk.GLP_DB, ub: f.max_production, lb: 0 },
+    name: `production_${f_id}`,
+    type: glpk.GLP_DB,
+    ub: f.max_production,
+    lb: 0,
   }));
 
   const result = (await glpk.solve({
@@ -359,7 +360,7 @@ async function recalcMaxProfit() {
       ],
     },
     subjectTo: [
-      ...production_limits,
+      // ...production_limits,
       ...real_factories.flatMap((f, f_id) => {
         return f.recipe.inputs.map(([amount, item], _) => {
           let asdf: { name: string, coef: number }[] = [];
@@ -413,6 +414,8 @@ async function recalcMaxProfit() {
         }).filter(x => x.vars.length > 0);
       })
     ],
+    bounds: production_limits,
+    // binaries: [],
   })).result;
 
   master_profit = result.z;
