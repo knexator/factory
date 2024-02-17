@@ -116,6 +116,7 @@ const CONFIG = {
   label_spacing: 40,
   auto_edges: false,
   editor_mode: false,
+  construction_costs: true,
   max_source_production: 2,
   max_intermediate_production: 3,
   max_final_production: 1,
@@ -130,6 +131,7 @@ gui.add(CONFIG, "breathing_space_multiplier", 0, 5);
 gui.add(CONFIG, "label_spacing", 10, 50);
 gui.add(CONFIG, 'auto_edges');
 gui.add(CONFIG, 'editor_mode');
+gui.add(CONFIG, 'construction_costs');
 gui.add(CONFIG, 'max_source_production', 1, 10);
 gui.add(CONFIG, 'max_intermediate_production', 1, 10);
 gui.add(CONFIG, 'max_final_production', 1, 10);
@@ -282,7 +284,7 @@ function randomizeMap(only_fixed: boolean): void {
 
 let master_profit = 0;
 async function recalcEdgeWeightsAndFactoryProductions() {
-  await recalcMaxProfit();
+  CONFIG.construction_costs ? recalcMaxProfit() : recalcMaxProfitWithConstructionCosts();
 }
 
 async function recalcMaxProfit() {
@@ -414,7 +416,158 @@ async function recalcMaxProfit() {
       })
     ],
     bounds: production_limits,
-    // binaries: [],
+    binaries: [],
+  })).result;
+
+  master_profit = result.z;
+  Object.entries(result.vars).forEach(([name, value]) => {
+    if (name.startsWith('production')) {
+      const factory_id = Number(name.split('_')[1]);
+      const factory = real_factories[factory_id];
+      // if (!factory) throw new Error(`falsy factory at id ${factory_id}, factories are ${factories}`);
+      // if (factory.recipe === 'stub') throw new Error(`stub factory ${factory_id} has production ${value}`);
+      factory.production = roundTo(value, 7);
+    } else if (name.startsWith('transport')) {
+      const [_, edge_id, item_id] = name.split('_');
+      const edge = edges[Number(edge_id)];
+      const traffic_index = edge.traffic.findIndex(([_, item]) => item.id === Number(item_id));
+      edge.traffic[traffic_index][0] = roundTo(value, 7);
+    } else {
+      throw new Error();
+    }
+  });
+}
+
+async function recalcMaxProfitWithConstructionCosts() {
+  if (CONFIG.auto_edges) {
+    edges = [];
+    factories.forEach(source => {
+      factories.forEach(target => {
+        if (source === target) return;
+        const common = commonItems(source, target);
+        if (common.length > 0) {
+          edges.push(new Edge(source, target, common.map(c => [0, c])));
+        }
+      });
+    });
+  } else {
+    edges.forEach(edge => {
+      const common = commonItems(edge.source, edge.target);
+      edge.traffic = common.map(item => [0, item]);
+    });
+  }
+  const real_factories: RealFactory[] = factories.filter(x => x.recipe !== 'stub') as RealFactory[];
+  real_factories.forEach(f => {
+    f.production = 0;
+  });
+  const stub_factories: StubFactory[] = factories.filter(x => x.recipe === 'stub') as StubFactory[];
+
+  {
+    stub_factories.forEach(f => {
+      f.possible_inputs = [];
+      f.possible_outputs = [];
+    });
+    let any_changes = true;
+    while (any_changes) {
+      any_changes = false;
+      for (const edge of edges) {
+        if (edge.target.recipe === 'stub') {
+          const provided_inputs = edge.source.recipe === 'stub' ? edge.source.possible_inputs : edge.source.recipe.outputs.map(([_, i]) => i);
+          for (const i of provided_inputs) {
+            if (!edge.target.possible_inputs.includes(i)) {
+              edge.target.possible_inputs.push(i);
+              any_changes = true;
+            }
+          }
+        }
+        if (edge.source.recipe === 'stub') {
+          const provided_outputs = edge.target.recipe === 'stub' ? edge.target.possible_outputs : edge.target.recipe.inputs.map(([_, i]) => i);
+          for (const i of provided_outputs) {
+            if (!edge.source.possible_outputs.includes(i)) {
+              edge.source.possible_outputs.push(i);
+              any_changes = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const production_limits = real_factories.map((f, f_id) => ({
+    name: `production_${f_id}`,
+    type: glpk.GLP_DB,
+    ub: f.max_production,
+    lb: 0,
+  }));
+
+  const result = (await glpk.solve({
+    name: 'LP',
+    objective: {
+      direction: glpk.GLP_MAX,
+      name: "profit",
+      vars: [
+        ...real_factories.map((f, f_id) => ({ name: `production_${f_id}`, coef: -f.recipe.cost })),
+        ...edges.flatMap((e, edge_id) => e.traffic.map(([_, item]) => {
+          return { name: `transport_${edge_id}_${item.id}`, coef: -e.dist() * item.transport_cost };
+        }))
+      ],
+    },
+    subjectTo: [
+      ...real_factories.flatMap((f, f_id) => {
+        return f.recipe.inputs.map(([amount, item], _) => {
+          let asdf: { name: string, coef: number }[] = [];
+          edges.forEach((e, edge_id) => {
+            if (e.target === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
+            }
+          });
+
+          return {
+            name: `balancein_${f_id}_${item.id}`,
+            vars: [{ name: `production_${f_id}`, coef: -amount },
+            ...asdf],
+            bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
+          }
+        })
+      }),
+      ...real_factories.flatMap((f, f_id) => {
+        return f.recipe.outputs.map(([amount, item], _) => {
+          let asdf: { name: string, coef: number }[] = [];
+          edges.forEach((e, edge_id) => {
+            if (e.source === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
+            }
+          });
+
+          return {
+            name: `balanceout_${f_id}_${item.id}`,
+            vars: [{ name: `production_${f_id}`, coef: -amount },
+            ...asdf],
+            bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
+          }
+        })
+      }),
+      ...stub_factories.flatMap((f, f_id) => {
+        return items.map(item => {
+          let asdf: { name: string, coef: number }[] = [];
+          edges.forEach((e, edge_id) => {
+            if (e.source === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: -1 });
+            }
+            if (e.target === f && e.traffic.some(([_, edge_item]) => edge_item === item)) {
+              asdf.push({ name: `transport_${edge_id}_${item.id}`, coef: 1 });
+            }
+          });
+          return {
+            name: `balancearound_${f_id}_${item.id}`,
+            vars: asdf,
+            bnds: { type: glpk.GLP_FX, ub: 0, lb: 0 }
+          }
+        }).filter(x => x.vars.length > 0);
+      })
+    ],
+    bounds: production_limits,
+    binaries: [],
   })).result;
 
   master_profit = result.z;
