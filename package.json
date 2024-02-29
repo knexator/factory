@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "update": "tsc && vite build && butler push ./dist infinitenutshell/long-hexposure:html",
+    "ghpages_kanvas2d": "cd .. && git clone https://github.com/knexator/kanvas2d.git",
     "ghpages_build": "tsc && vite build --mode include_frame"
   },
   "devDependencies": {
@@ -15,7 +16,6 @@
   },
   "dependencies": {
     "glpk.js": "^4.0.2",
-    "kanvas2d": "^0.0.9",
     "lil-gui": "^0.18.2",
     "twgl.js": "^5.5.3"
   }

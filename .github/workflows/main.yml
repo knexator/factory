@@ -36,6 +36,8 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm install
+      - name: Get local dependency
+        run: npm run ghpages_kanvas2d
       - name: Build
         run: npm run ghpages_build
       - name: Setup Pages
