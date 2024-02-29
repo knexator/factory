@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "update": "tsc && vite build && butler push ./dist infinitenutshell/long-hexposure:html",
-    "ghpages_kanvas2d": "cd .. && git clone https://github.com/knexator/kanvas2d.git && npm run build:lib",
+    "ghpages_kanvas2d": "cd .. && git clone https://github.com/knexator/kanvas2d.git && cd kanvas2d && npm run build:lib",
     "ghpages_build": "tsc && vite build --mode include_frame"
   },
   "devDependencies": {
